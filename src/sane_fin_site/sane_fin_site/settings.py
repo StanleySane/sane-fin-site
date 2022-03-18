@@ -31,6 +31,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'fin_storage',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -105,7 +106,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Moscow'
 
 USE_I18N = True
 
@@ -121,3 +122,39 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+DATA_UPLOAD_MAX_NUMBER_FIELDS = None
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'sane_finances': {
+            '()': 'logging.Formatter',
+            'fmt': '{asctime} [{name}] {levelname}: {message}',
+            'style': '{',
+        }
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'formatter': 'sane_finances',
+            'class': 'logging.StreamHandler',
+            'stream': 'ext://sys.stdout',
+        },
+        'file': {
+            'level': 'INFO',
+            'formatter': 'sane_finances',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'sanelog.log',
+            'maxBytes': 1048576,
+            'backupCount': 10
+        },
+    },
+    'loggers': {
+        'sane_finances': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+        },
+    }
+}

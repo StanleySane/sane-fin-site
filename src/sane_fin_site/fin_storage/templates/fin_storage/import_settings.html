@@ -1,0 +1,149 @@
+{% extends "fin_storage/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+    {{ block.super }}
+
+    {{ form.media }}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'fin_storage:exporters' %}">All Exporters</a>
+    {% if title %} &rsaquo; {{ title }}{% endif %}
+</div>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} model-{{ form.model_name }} change-form{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+    <form enctype="multipart/form-data" method="post" id="{{ form.model_name }}_form" novalidate>
+        {% csrf_token %}
+
+        <div>
+            {% if form.errors %}
+                <p class="errornote">
+                {% if form.errors|length == 1 %}Please correct the error below.{% else %}Please correct the errors below.{% endif %}
+                </p>
+                {{ form.non_field_errors }}
+            {% endif %}
+
+            <fieldset class="module aligned ">
+                {{ form.as_div_file_field }}
+            </fieldset>
+
+            <div class="submit-row">
+                <input type="submit" value="Parse file" class="default" name="_upload">
+            </div>
+
+            <script id="django-admin-form-add-constants"
+                    src="{% static 'admin/js/change_form.js' %}"
+                    data-model-name="{{ form.model_name }}"
+                    async>
+            </script>
+        </div>
+
+        {% if has_settings_items or form.settings_items.errors %}
+        <h1>Parsed settings from file '{{ form.settings_data.file_name }}':</h1>
+
+        <div>
+            <fieldset class="module aligned ">
+                <h2>Select items to save into database:</h2>
+                <div class="form-row field-history">
+                    {% if form.settings_items.errors %}{{ form.settings_items.errors }}{% endif %}
+
+                    <div class="module" id="changelist">
+                        <div class="changelist-form-container">
+                    <div class="results">
+                        <table id="result_list">
+                            <thead>
+                                <tr>
+                                    <th scope="col"><div class="text"><span>Exporter code</span></div></th>
+                                    <th scope="col"><div class="text"><span>Is new</span></div></th>
+                                    <th scope="col"><div class="text"><span>Description</span></div></th>
+                                    <th scope="col"><div class="text"><span>History data</span></div></th>
+                                    <th scope="col"><div class="text"><span>Downloaded intervals</span></div></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for settings_item in form.settings_items %}
+                                <tr>
+                                    <td>
+                                        <label for="{{ settings_item.id_for_label }}">
+                                            {% if settings_item.choice_label.has_exporter_info %}
+                                            {{ settings_item.tag }}
+                                            {{ settings_item.choice_label.exporter_unique_code }}
+                                            {% else %}
+                                            <input type="checkbox"
+                                                   disabled
+                                                   id="{{ settings_item.id_for_label }}"
+                                                   style="visibility: hidden;">
+                                            {{ settings_item.choice_label.exporter_unique_code }}
+                                            {% endif %}
+                                        </label>
+                                    </td>
+                                    <td>
+                                        {% if settings_item.choice_label.has_exporter_info %}
+                                        {{ settings_item.choice_label.is_new }}
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if settings_item.choice_label.has_exporter_info %}
+                                        {{ settings_item.choice_label.description }}
+                                        {% else %}
+                                        <span>Not available</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if settings_item.choice_label.has_exporter_info %}
+                                        <input type="checkbox"
+                                               checked
+                                               name="_selected_history_data"
+                                               value="{{ settings_item.choice_label.exporter_unique_code }}">
+                                        {% else %}
+                                        <input type="checkbox"
+                                               disabled
+                                               name="_selected_history_data"
+                                               value="{{ settings_item.choice_label.exporter_unique_code }}">
+                                        {% endif %}
+                                        <span>{{ settings_item.choice_label.history_data|length }} items</span>
+                                    </td>
+                                    <td>
+                                        {% if settings_item.choice_label.has_exporter_info %}
+                                        <input type="checkbox"
+                                               checked
+                                               name="_selected_downloaded_intervals"
+                                               value="{{ settings_item.choice_label.exporter_unique_code }}">
+                                        {% else %}
+                                        <input type="checkbox"
+                                               disabled
+                                               name="_selected_downloaded_intervals"
+                                               value="{{ settings_item.choice_label.exporter_unique_code }}">
+                                        {% endif %}
+                                        <span>{{ settings_item.choice_label.downloaded_intervals|length }} items</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                            <p class="paginator">{{ form.settings_items|length }} found</p>
+                            </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            {% if form.settings_items|length %}
+            <div class="submit-row">
+                <input type="submit" value="Save into database" class="default" name="_save">
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+    </form>
+
+</div>
+{% endblock %}

@@ -1,0 +1,139 @@
+{% extends "fin_storage/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+    {{ block.super }}
+
+    {{ form.media }}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'fin_storage:exporters' %}">All Exporters</a>
+    {% if title %} &rsaquo; {{ title }}{% endif %}
+</div>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} model-{{ form.model_name }} change-form{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <form method="post" id="{{ form.model_name }}_form" novalidate>
+        {% csrf_token %}
+
+        <div>
+        {% if form.errors %}
+            <p class="errornote">
+            {% if form.errors|length == 1 %}Please correct the error below.{% else %}Please correct the errors below.{% endif %}
+            </p>
+            {{ form.non_field_errors }}
+        {% endif %}
+
+        {% block field_set %}
+            <fieldset class="module aligned">
+                <h2>Select sources to check:</h2>
+
+                <div class="form-row field-source">
+                    {% if form.source.errors %}{{ form.source.errors }}{% endif %}
+
+                    <div class="module" id="changelist">
+                        <div class="changelist-form-container">
+                            <div class="results">
+                                <table id="result_list">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col"><div class="text"><span>Name</span></div></th>
+                                            <th scope="col"><div class="text"><span>Status</span></div></th>
+                                            <th scope="col"><div class="text"><span>Provider site</span></div></th>
+                                            <th scope="col"><div class="text"><span>Exporter type</span></div></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for source_field in form.source %}
+                                        <tr>
+                                            <td>
+                                                <!--suppress XmlInvalidId -->
+                                                <label for="{{ source_field.id_for_label }}"
+                                                style="padding: 0;width: auto;">
+                                                    {% if source_field.choice_label.not_found %}
+                                                    <input type="checkbox"
+                                                           disabled
+                                                           id="{{ source_field.id_for_label }}"
+                                                           style="visibility: hidden;">
+                                                    Not available
+                                                    {% else %}
+                                                    {{ source_field.tag }}
+                                                    {{ source_field.choice_label.exporter_registry.name }}
+                                                    {% endif %}
+                                                </label>
+                                                {% if source_field.choice_label.not_found %}
+                                                    <br/>
+                                                    <ul class="errorlist" style="margin: 10px; padding-left: 5px;">
+                                                        <li>Not found in available exporter registries</li>
+                                                    </ul>
+                                                {% endif %}
+                                            </td>
+                                            <td style="vertical-align: middle;">
+                                                {% if source_field.choice_label.status == 'valid' %}
+                                                <div style="background: var(--message-success-bg) url(/static/admin/img/icon-yes.svg) 0px no-repeat; background-size: 16px auto; padding: 0px 0px 0px 20px;">
+                                                Valid
+                                                </div>
+                                                {% elif source_field.choice_label.status == 'failed' %}
+                                                <div style="background: var(--message-error-bg) url(/static/admin/img/icon-no.svg) 0px no-repeat; background-size: 16px auto; padding: 0px 0px 0px 20px;">
+                                                Failed
+                                                </div>
+                                                {% elif source_field.choice_label.status == 'unknown' %}
+                                                <div style="background: url(/static/admin/img/icon-unknown.svg) 0px no-repeat; background-size: 16px auto; padding: 0px 0px 0px 20px;">
+                                                Unknown
+                                                </div>
+                                                {% endif %}
+
+                                                {% if source_field.choice_label.status != 'unknown' %}
+                                                <div class="help" style="margin: 0;">Last check at {{ source_field.choice_label.last_check_moment_str }}</div>
+                                                {% endif %}
+                                                {% if source_field.choice_label.status == 'failed' %}
+                                                <ul class="errorlist" style="margin: 0;">
+                                                    <li>{{ source_field.choice_label.check_error_message }}</li>
+                                                </ul>
+                                                {% endif %}
+                                            </td>
+                                            <td style="vertical-align: middle;">
+                                                {% if not source_field.choice_label.not_found and source_field.choice_label.exporter_registry.provider_site %}
+                                                <a href="{{ source_field.choice_label.exporter_registry.provider_site }}">
+                                                    {{ source_field.choice_label.exporter_registry.provider_site }}
+                                                </a>
+                                                {% endif %}
+                                            </td>
+                                            <td style="vertical-align: middle;">{{ source_field.choice_label.exporter_type }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <p class="paginator">{{ form.source|length }} found</p>
+                        </div>
+                    </div>
+                </div>
+
+            </fieldset>
+        {% endblock %}
+
+        {% block submit_buttons_bottom %}
+            <div class="submit-row">
+                <input type="submit" value="Check" class="default">
+            </div>
+        {% endblock %}
+
+        {% block admin_change_form_document_ready %}
+            <script id="django-admin-form-add-constants"
+                    src="{% static 'admin/js/change_form.js' %}"
+                    data-model-name="{{ form.model_name }}"
+                    async>
+            </script>
+        {% endblock %}
+
+        </div>
+    </form>
+</div>
+{% endblock %}

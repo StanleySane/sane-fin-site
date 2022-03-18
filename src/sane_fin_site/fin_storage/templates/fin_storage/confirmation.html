@@ -1,0 +1,34 @@
+{% extends "fin_storage/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script src="{% static 'admin/js/cancel.js' %}" async></script>
+
+    {{ form.media }}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'fin_storage:exporters' %}">All Exporters</a>
+    {% if object %}
+    &rsaquo; <a href="{% url 'fin_storage:exporters_detail' object.id %}">{{ object.unique_code }}</a>
+    {% endif %}
+    {% if title %} &rsaquo; {{ title }}{% endif %}
+</div>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} delete-confirmation{% endblock %}
+
+{% block content %}
+    <p>{{ question }}</p>
+
+    <form method="post">{% csrf_token %}
+        <div>
+            <input type="hidden" name="post" value="yes">
+            <input type="submit" value="Yes, I’m sure">
+            <a href="#" class="button cancel-link">No, take me back</a>
+        </div>
+    </form>
+{% endblock %}
+
