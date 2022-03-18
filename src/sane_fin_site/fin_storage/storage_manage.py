@@ -343,6 +343,13 @@ class JsonSettingsManager(SpecificSettingsManager):
         exporters_as_str = json.dumps(exporters_as_dict)
         return exporters_as_str
 
+    # noinspection PyMethodMayBeStatic
+    def _get_string_field_value(self, json_data: typing.Dict[str, str], field_name: str):
+        raw_value = json_data[field_name]
+        if raw_value is None:
+            return raw_value
+        return str(raw_value)
+
     def deserialize_settings(
             self,
             settings_file_name: str,
@@ -357,15 +364,19 @@ class JsonSettingsManager(SpecificSettingsManager):
                 # noinspection PyTypeChecker
                 exporter = view_models.Exporter(
                     id=None,
-                    unique_code=str(exporter_data['unique_code'] or '') or None,
-                    description=str(exporter_data['description'] or '') or None,
+                    unique_code=self._get_string_field_value(exporter_data, 'unique_code'),
+                    description=self._get_string_field_value(exporter_data, 'description'),
                     is_active=bool(exporter_data['is_active']),
                     exporter_registry=None,
-                    raw_exporter_type=str(exporter_data['exporter_type'] or '') or None,
+                    raw_exporter_type=self._get_string_field_value(exporter_data, 'exporter_type'),
                     download_info_parameters=None,
-                    download_info_parameters_str=str(exporter_data['download_info_parameters'] or '') or None,
+                    download_info_parameters_str=self._get_string_field_value(
+                        exporter_data,
+                        'download_info_parameters'),
                     download_history_parameters=None,
-                    download_history_parameters_str=str(exporter_data['download_history_parameters'] or '') or None,
+                    download_history_parameters_str=self._get_string_field_value(
+                        exporter_data,
+                        'download_history_parameters'),
                     history_data={},
                     downloaded_intervals=[]
                 )
