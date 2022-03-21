@@ -1,3 +1,4 @@
+import logging
 import typing
 
 from django import forms
@@ -58,14 +59,14 @@ class ExporterEditForm(forms.Form):
                  empty_permitted=False, field_order=None, use_required_attribute=None, renderer=None):
 
         assert self.instrument_info_field_name not in self.common_fields_names, \
-            f"'instrument_info_field_name' has invalid value shared with 'common_fields_names'"
+            "'instrument_info_field_name' has invalid value shared with 'common_fields_names'"
 
         super().__init__(data, files, auto_id, prefix,
                          initial, error_class, label_suffix,
                          empty_permitted, field_order, use_required_attribute, renderer)
 
         assert self.fields.keys() == set(self.common_fields_names + (self.instrument_info_field_name,)), \
-            f"Attributes 'common_fields_names' and/or 'instrument_info_field_name' are not initialized properly"
+            "Attributes 'common_fields_names' and/or 'instrument_info_field_name' are not initialized properly"
 
         if available_instruments is not None:
             self.update_available_instruments(available_instruments)
@@ -102,14 +103,11 @@ class ExporterEditForm(forms.Form):
 
     def update_available_instruments(self, available_instruments: typing.OrderedDict[str, AnyInstrumentInfoProvider]):
         if available_instruments is None:
-            raise ValueError(f"'available_instruments' is None")
+            raise ValueError("'available_instruments' is None")
 
         instrument_info_field = self.fields[self.instrument_info_field_name]
         instrument_info_field.disabled = False
-        instrument_info_field.choices = [
-            (instrument_id, instrument_info_provider)
-            for instrument_id, instrument_info_provider
-            in available_instruments.items()]
+        instrument_info_field.choices = list(available_instruments.items())
 
     def as_div_common(self):
         return self._as_div_for_fields(self.common_fields_names)
@@ -282,7 +280,7 @@ class UpdateExporterViewMixin:
                 "in the URLconf."
             )
 
-        exporter = db.DatabaseContext.get_exporter_by_id(pk)
+        exporter = db.DatabaseContext().get_exporter_by_id(pk)
         return exporter
 
 
@@ -314,7 +312,7 @@ class CreateExporterViewMixin:
                 "in the URLconf."
             )
 
-        available_exporters_registries = StaticDataCache.get_available_exporters_registries()
+        available_exporters_registries = StaticDataCache().get_available_exporters_registries()
         if type_id not in available_exporters_registries:
             raise ValueError(f"Exporter with type id {type_id!r} not found")
 
@@ -357,7 +355,7 @@ class BaseExportersEditView(SessionFormDataStoreMixin, generic.edit.UpdateView):
     validate_exporter_availability = True
 
     def init_instance_managers(self, instrument_exporter_factory: InstrumentExporterFactory):
-        download_param_values_storage = StaticDataCache.download_parameter_values_storage(
+        download_param_values_storage = StaticDataCache().download_parameter_values_storage(
             instrument_exporter_factory)
 
         self.info_params_managers = SpecificInstanceManagersPack(
@@ -482,8 +480,11 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
         self.finish_edit = False
+        self.static_data_cache = StaticDataCache()
+        self.database_context = db.DatabaseContext()
 
     def get_instance_for_form_fields_data(self):
         return self.object.download_info_parameters
@@ -529,8 +530,6 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
                         in history_params_data.items()
                         if field_name in instrument_identity_form_fields})
 
-        print(f"{self.__class__.__name__} (history data):\n\tinitial={initial}\n\tstored_form_data={stored_form_data}")
-
         # rewrite initial data with data stored in session
         initial.update({field_name: field_value
                         for field_name, field_value
@@ -560,7 +559,7 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
             self.initial,
             tuple(self.info_params_managers.form_fields_manager.form_fields.keys())
         )
-        cached_instruments = StaticDataCache.get_available_instruments(available_instruments_cache_key)
+        cached_instruments = self.static_data_cache.get_available_instruments(available_instruments_cache_key)
         if cached_instruments is not None:
             # fill list of found available instruments
             kwargs.update({
@@ -573,8 +572,8 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
         cleaned_data: dict[str, typing.Any] = form.cleaned_data
 
         unique_code = cleaned_data.get('unique_code')
-        if unique_code and not db.DatabaseContext.is_exporter_code_unique(unique_code, self.object.id):
-            form.add_error('unique_code', f"Exporter code is not unique")
+        if unique_code and not self.database_context.is_exporter_code_unique(unique_code, self.object.id):
+            form.add_error('unique_code', "Exporter code is not unique")
             return super().form_invalid(form)
 
         available_instruments_cache_key = self.get_available_instruments_cache_key(
@@ -592,9 +591,11 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
         info_params = self.build_download_info_params_instance(specific_cleaned_data)
 
         if '_find' in self.request.POST:
+            self.logger.info(f"Try to find available instruments of {self.object.unique_code!r} "
+                             f"by parameters {info_params}")
 
             # download anyway even if it's in cache
-            _ = StaticDataCache.download_available_instruments(
+            _ = self.static_data_cache.download_available_instruments(
                 available_instruments_cache_key,
                 info_params,
                 self.object.exporter_registry.factory)
@@ -610,14 +611,15 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
             return super().form_valid(form)
 
         elif '_with_found' in self.request.POST:
+            self.logger.info("Continue editing info with found instrument")
 
             # check if specific fields not changed
             changed_specific_fields_names = tuple(set(form.changed_data) & set(form.specific_fields_names))
             if changed_specific_fields_names:
                 form.add_error(
                     None,
-                    {changed_field_name: f"Can't continue because of changing this field. "
-                                         f"You have to 'Find' and select appropriate instrument first."
+                    {changed_field_name: "Can't continue because of changing this field. "
+                                         "You have to 'Find' and select appropriate instrument first."
                      for changed_field_name
                      in changed_specific_fields_names}
                 )
@@ -626,13 +628,16 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
             # check if any instrument was selected (since it not required in the form)
             instrument_info_code = cleaned_data[form.instrument_info_field_name]
             if not instrument_info_code:
-                form.add_error(form.instrument_info_field_name, f"You should select one of the instruments")
+                form.add_error(form.instrument_info_field_name, "You should select one of the instruments")
                 return super().form_invalid(form)
 
+            self.logger.info(f"Found instrument code: {instrument_info_code}")
+
             # get all available instruments
-            all_available_instruments = StaticDataCache.get_available_instruments(available_instruments_cache_key)
+            all_available_instruments = self.static_data_cache.get_available_instruments(
+                available_instruments_cache_key)
             if all_available_instruments is None:
-                all_available_instruments = StaticDataCache.download_available_instruments(
+                all_available_instruments = self.static_data_cache.download_available_instruments(
                     available_instruments_cache_key,
                     info_params,
                     self.object.exporter_registry.factory)
@@ -648,6 +653,7 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
             instrument_info = all_available_instruments[instrument_info_code]
 
         elif '_with_manual' in self.request.POST:
+            self.logger.info("Continue editing info with manual identity")
 
             # check if all manual fields were filled (since they are not required in the form)
             empty_fields = [identity_field_name
@@ -661,6 +667,7 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
             instrument_info: typing.Optional[InstrumentInfoProvider] = None
 
         else:
+            self.logger.error("Bad POST request")
             return HttpResponseBadRequest()
 
         self.store_common_form_data(cleaned_data, form, self.info_params_managers.serializer)
@@ -693,12 +700,14 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
 
         if '_with_manual' in self.request.POST:
             # update data to save in session with data from manual fields
-            history_params_form_data.update({
+            manual_fields_data = {
                 field_name: field_value
                 for field_name, field_value
                 in cleaned_data.items()
                 if field_name in instrument_identity_form_fields
-            })
+            }
+            self.logger.info(f"Manual identity: {manual_fields_data}")
+            history_params_form_data.update(manual_fields_data)
 
         self.store_specific_form_data(
             ExportersEditParamsView.session_key_suffix,
@@ -707,6 +716,7 @@ class ExportersEditInfoView(UpdateExporterViewMixin, BaseExportersEditView):
             self.history_params_managers.serializer)
 
         self.finish_edit = True
+        self.logger.info("Instrument info editing finished")
         return super().form_valid(form)
 
 
@@ -736,8 +746,10 @@ class ExportersEditParamsView(UpdateExporterViewMixin, BaseExportersEditView):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
         self.finish_edit = False
+        self.database_context = db.DatabaseContext()
 
     def get_instance_for_form_fields_data(self):
         return self.object.download_history_parameters
@@ -757,11 +769,12 @@ class ExportersEditParamsView(UpdateExporterViewMixin, BaseExportersEditView):
         cleaned_data: dict[str, typing.Any] = form.cleaned_data
 
         unique_code = cleaned_data.get('unique_code')
-        if unique_code and not db.DatabaseContext.is_exporter_code_unique(unique_code, self.object.id):
-            form.add_error('unique_code', f"Exporter code is not unique")
+        if unique_code and not self.database_context.is_exporter_code_unique(unique_code, self.object.id):
+            form.add_error('unique_code', "Exporter code is not unique")
             return super().form_invalid(form)
 
         if '_save' in self.request.POST:
+            self.logger.info("Try to save download parameters")
 
             self.save(form)
 
@@ -771,6 +784,7 @@ class ExportersEditParamsView(UpdateExporterViewMixin, BaseExportersEditView):
             return super().form_valid(form)
 
         elif '_select_another' in self.request.POST:
+            self.logger.info("Go to select another instrument")
 
             self.store_common_form_data(cleaned_data, form, self.history_params_managers.serializer)
             self.store_specific_form_data(
@@ -783,6 +797,7 @@ class ExportersEditParamsView(UpdateExporterViewMixin, BaseExportersEditView):
             return super().form_valid(form)
 
         else:
+            self.logger.error("Bad POST request")
             return HttpResponseBadRequest()
 
     def get_data_to_save(self, form: ExporterEditForm) -> typing.Dict[str, typing.Any]:
@@ -821,7 +836,7 @@ class ExportersEditParamsView(UpdateExporterViewMixin, BaseExportersEditView):
 
     def save(self, form: ExporterEditForm):
         data_to_update = self.get_data_to_save(form)
-        db.DatabaseContext.update_exporter(self.object.id, True, **data_to_update)
+        self.database_context.update_exporter(self.object.id, True, **data_to_update)
 
 
 class ExportersAddTypedParamsView(CreateExporterViewMixin, ExportersEditParamsView):
@@ -849,7 +864,7 @@ class ExportersAddTypedParamsView(CreateExporterViewMixin, ExportersEditParamsVi
 
     def save(self, form: ExporterEditForm):
         data_to_create = self.get_data_to_save(form)
-        self.object.id = db.DatabaseContext.create_exporter(self.object.exporter_registry, True, **data_to_create)
+        self.object.id = self.database_context.create_exporter(self.object.exporter_registry, True, **data_to_create)
 
 
 class DummyForm(forms.Form):
@@ -870,7 +885,7 @@ class ExportersAddTypedCancelView(CreateExporterViewMixin,
             current_app=apps.FinStorageConfig.name)
 
     def get_success_message(self, cleaned_data):
-        return f"Creation of new exporter successfully canceled"
+        return "Creation of new exporter successfully canceled"
 
     def get_context_data(self, **kwargs):
         context_data = super().get_context_data(**kwargs)
@@ -899,6 +914,10 @@ class ExportersDeleteView(UpdateExporterViewMixin,
 
     validate_exporter_availability = False
     title = 'Are you sure?'
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
     def get_success_url(self):
         return reverse_lazy(
@@ -930,11 +949,12 @@ class ExportersDeleteView(UpdateExporterViewMixin,
         exporter = self.get_exporter()
         return exporter
 
-    def delete(self, request, *args, **kwargs):
+    def form_valid(self, form):
         self.object = self.get_object()
+        self.logger.info(f"Deleting {self.object.unique_code!r}")
         success_message = self.get_success_message(None)
 
-        db.DatabaseContext.delete_exporter(self.object.id)
+        db.DatabaseContext().delete_exporter(self.object.id)
 
         messages.success(self.request, success_message)
         success_url = self.get_success_url()

@@ -1,4 +1,5 @@
 import datetime
+import logging
 import sys
 import typing
 
@@ -18,6 +19,7 @@ from sane_finances.sources.base import InstrumentExporterRegistry
 from .common import all_pages_context
 from .. import apps
 from .. import db
+from .. import models
 from ..cachers import StaticDataCache
 from ..view_models import Exporter, SourceApiActualityInfo
 
@@ -26,6 +28,13 @@ class ActualizeHistoryRedirectView(generic.RedirectView):
     permanent = False
     query_string = False
     pattern_name = apps.FinStorageConfig.name + ':exporters_detail'
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
+        self.static_data_cache = StaticDataCache()
+        self.database_context = db.DatabaseContext()
 
     def get_exporter(self) -> typing.Optional[Exporter]:
         pk = self.kwargs.get('id')
@@ -37,9 +46,10 @@ class ActualizeHistoryRedirectView(generic.RedirectView):
                 "in the URLconf."
             )
 
+        self.logger.debug(f"Try to get exporter with pk={pk}")
         # noinspection PyUnresolvedReferences
         try:
-            exporter = db.DatabaseContext.get_exporter_by_id(pk)
+            exporter = self.database_context.get_exporter_by_id(pk)
         except models.Exporter.DoesNotExist:
             return None
 
@@ -51,6 +61,7 @@ class ActualizeHistoryRedirectView(generic.RedirectView):
             return HttpResponseNotFound()
 
         if exporter.disabled:
+            self.logger.info(f"Can`t actualize history for disabled exporter {exporter.unique_code!r}")
             return super().get(request, *args, **kwargs)
 
         today = datetime.date.today()
@@ -68,9 +79,9 @@ class ActualizeHistoryRedirectView(generic.RedirectView):
             is_actual = last_date >= today
 
         if is_actual:
-            messages.info(
-                self.request,
-                f"The history data of exporter {exporter.unique_code!r} is already actual")
+            message = f"The history data of exporter {exporter.unique_code!r} is already actual"
+            self.logger.info(message)
+            messages.info(self.request, message)
 
         else:
             moment_from = datetime.datetime.combine(
@@ -80,15 +91,19 @@ class ActualizeHistoryRedirectView(generic.RedirectView):
             moment_to = datetime.datetime.combine(
                 today,
                 datetime.time.min,
-                tzinfo=timezone.get_current_timezone())
+                tzinfo=moment_from.tzinfo)
 
-            downloaded_history_data = tuple(StaticDataCache.download_history_data(exporter, moment_from, moment_to))
-            db.DatabaseContext.save_history_data(
+            self.logger.info(f"Actualize history in {moment_from.date().isoformat()}..{moment_to.date().isoformat()} "
+                             f"for exporter {exporter.unique_code!r}")
+
+            downloaded_history_data = tuple(self.static_data_cache.download_history_data(
+                exporter, moment_from, moment_to))
+            self.database_context.save_history_data(
                 exporter.id,
                 downloaded_history_data,
                 moment_from.date(),
                 moment_to.date())
-            StaticDataCache.drop_history_data_from_cache(exporter, moment_from, moment_to)
+            self.static_data_cache.drop_history_data_from_cache(exporter, moment_from, moment_to)
 
             if has_history:
                 messages.success(
@@ -145,6 +160,13 @@ class SourceApiActualityView(generic.edit.CreateView):
     available_exporters_registries: typing.OrderedDict[int, InstrumentExporterRegistry]
     title = 'Check sources API actuality'
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
+        self.static_data_cache = StaticDataCache()
+        self.database_context = db.DatabaseContext()
+
     def get_success_url(self):
         return reverse_lazy(
             apps.FinStorageConfig.name + ':sources_actuality',
@@ -163,7 +185,7 @@ class SourceApiActualityView(generic.edit.CreateView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
 
-        self.available_exporters_registries = StaticDataCache.get_available_exporters_registries()
+        self.available_exporters_registries = self.static_data_cache.get_available_exporters_registries()
         exporter_registry_by_type = {
             analyzers.get_full_path(exporter_registry.factory.__class__): (exporter_registry_id, exporter_registry)
             for exporter_registry_id, exporter_registry
@@ -171,7 +193,7 @@ class SourceApiActualityView(generic.edit.CreateView):
         db_source_api_actualities: typing.Dict[str, SourceApiActualityInfo] = {
             source_api_actuality.raw_exporter_type: source_api_actuality
             for source_api_actuality
-            in db.DatabaseContext.get_all_source_api_actualities()}
+            in self.database_context.get_all_source_api_actualities()}
 
         available_sources = []
         for exporter_type, (exporter_registry_id, exporter_registry) in exporter_registry_by_type.items():
@@ -211,11 +233,11 @@ class SourceApiActualityView(generic.edit.CreateView):
         if not source_choices:
             form.add_error(
                 None,
-                f"Nothing to check. Select sources."
+                "Nothing to check. Select sources."
             )
             return super().form_invalid(form)
 
-        available_exporters_registries = StaticDataCache.get_available_exporters_registries()
+        available_exporters_registries = self.static_data_cache.get_available_exporters_registries()
         selected_exporters_factories = [available_exporters_registries[int(source_code)].factory
                                         for source_code
                                         in source_choices]
@@ -226,17 +248,22 @@ class SourceApiActualityView(generic.edit.CreateView):
             checker = exporter_factory.create_api_actuality_checker(UrlDownloader(DummyCacher()))
             exporter_type = analyzers.get_full_path(exporter_factory.__class__)
 
+            self.logger.info(f"Check source API actuality for {exporter_factory}")
             # noinspection PyBroadException
             try:
                 checker.check()
+
             except Exception:
                 _, exc_value, _ = sys.exc_info()
                 error_message = str(exc_value)
                 was_error = True
+                self.logger.info(f"Source API for {exporter_factory} is not actual: {error_message}")
+
             else:
                 error_message = None
+                self.logger.info(f"Source API for {exporter_factory} is actual")
 
-            db.DatabaseContext.update_source_api_actuality(exporter_type, error_message, timezone.now())
+            self.database_context.update_source_api_actuality(exporter_type, error_message, timezone.now())
 
         if was_error:
             messages.error(self.request, "There was error(s) while checking API actuality")

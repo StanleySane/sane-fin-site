@@ -1,3 +1,4 @@
+import logging
 import typing
 import uuid
 
@@ -75,6 +76,8 @@ class ExportersAddView(generic.edit.CreateView):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
         self.selected_type_id: typing.Optional[int] = None
 
     def get_success_url(self):
@@ -96,7 +99,11 @@ class ExportersAddView(generic.edit.CreateView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
 
-        kwargs['available_exporters_registries'] = StaticDataCache.get_available_exporters_registries()
+        available_exporters_registries = StaticDataCache().get_available_exporters_registries()
+
+        self.logger.info(f"Got {len(available_exporters_registries)} available exporters registries")
+
+        kwargs['available_exporters_registries'] = available_exporters_registries
 
         return kwargs
 

@@ -41,8 +41,8 @@ class InstrumentValueManager(models.Manager):
         # noinspection PyUnresolvedReferences
         try:
             exporter = Exporter.objects.get_by_natural_key(exporter_unique_code)
-        except Exporter.DoesNotExist:
-            raise self.model.DoesNotExist()
+        except Exporter.DoesNotExist as ex:
+            raise self.model.DoesNotExist() from ex
 
         return self.get(exporter_id=exporter.id, moment=moment)
 

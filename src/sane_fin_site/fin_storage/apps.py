@@ -1,5 +1,4 @@
 import logging
-import io
 import sys
 
 from django.apps import AppConfig
@@ -12,25 +11,20 @@ class FinStorageConfig(AppConfig):
     name = 'fin_storage'
 
     # noinspection PyMethodMayBeStatic
-    def _stdout(self, stdout_io: io.TextIOBase, text: str):
-        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-            return
-
-        stdout_io.write(text)
-
-    def ready(self):
+    def _clear_sessions(self):
         from django.contrib.sessions.management.commands.clearsessions import Command
 
         logger.info("Clearing expired sessions...")
         try:
             clearsessions = Command()
-
-            self._stdout(clearsessions.stdout, "Clearing expired sessions...")
             clearsessions.handle()
-            self._stdout(clearsessions.stdout, "Expired sessions cleared successfully")
 
-        except Exception as x:
-            logger.exception("Error while clearing expired sessions", exc_info=x)
+        except Exception as ex:
+            logger.exception("Error while clearing expired sessions", exc_info=ex)
 
         else:
             logger.info("Expired sessions cleared successfully")
+
+    def ready(self):
+        if 'runserver' in sys.argv:
+            self._clear_sessions()

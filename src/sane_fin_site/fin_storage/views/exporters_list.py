@@ -1,3 +1,4 @@
+import logging
 import typing
 
 from django.contrib import messages
@@ -24,11 +25,12 @@ class ExportersView(generic.list.ListView):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
         self.settings_manager = SettingsManager()
 
     def get_queryset(self):
-        return list(db.DatabaseContext.get_all_exporters())
+        return list(db.DatabaseContext().get_all_exporters())
 
     # noinspection PyMethodMayBeStatic,PyUnusedLocal
     def on_export_django_xml(self, request, exporters: typing.List[Exporter]):
@@ -104,6 +106,8 @@ class ExportersView(generic.list.ListView):
         Handle POST requests: instantiate a form instance with the passed
         POST variables and then check if it's valid.
         """
+        self.logger.info("Do action over selected exporters")
+
         self.object_list = object_list = self.get_queryset()
 
         action_index = int(request.POST.get('index', 0))
@@ -122,8 +126,10 @@ class ExportersView(generic.list.ListView):
         # If the form's valid we can handle the action.
         if action_form.is_valid():
             action = action_form.cleaned_data['action']
+            func, name, *_ = self.get_actions(request)[action]
+            self.logger.info(f"Try to perform action {name!r}")
+
             select_across = action_form.cleaned_data['select_across']
-            func = self.get_actions(request)[action][0]
 
             # Get the list of selected PKs. If nothing's selected, we can't
             # perform an action on it, so bail. Except we want to perform
@@ -146,12 +152,14 @@ class ExportersView(generic.list.ListView):
             # little HTTP citizen and redirect back to the changelist page.
             if isinstance(response, HttpResponseBase):
                 return response
-            else:
-                messages.success(self.request, "Action finished successfully.")
-                return HttpResponseRedirect(self.get_success_url())
+
+            messages.success(self.request, "Action finished successfully.")
+            return HttpResponseRedirect(self.get_success_url())
 
         else:
-            messages.warning(self.request, "No action selected.")
+            message = "No action selected."
+            self.logger.info(message)
+            messages.warning(self.request, message)
             return HttpResponseRedirect(self.get_success_url())
 
     # PUT is a valid HTTP verb for creating (with a known URL) or editing an

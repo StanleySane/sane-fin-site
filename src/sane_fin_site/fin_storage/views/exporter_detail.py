@@ -1,6 +1,7 @@
 import datetime
 import decimal
 import json
+import logging
 import typing
 
 from django import forms
@@ -51,7 +52,7 @@ class ExporterDownloadForm(forms.Form):
 
     def update_history_data(self, history_data: typing.List[HistoryDataItem]):
         if history_data is None:
-            raise ValueError(f"'history_data' is None")
+            raise ValueError("'history_data' is None")
 
         history_field = self.fields['history']
         history_field.choices = [
@@ -107,10 +108,11 @@ class ExportersDetailView(generic.edit.UpdateView):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.history_data: typing.List[InstrumentValue] = []
 
     def init_instance_managers(self, instrument_exporter_factory: InstrumentExporterFactory):
-        download_param_values_storage = StaticDataCache.download_parameter_values_storage(
+        download_param_values_storage = StaticDataCache().download_parameter_values_storage(
             instrument_exporter_factory)
         instance_analyzer = analyzers.FlattenedAnnotatedInstanceAnalyzer(
             instrument_exporter_factory.download_parameters_factory.download_history_parameters_class,
@@ -147,6 +149,8 @@ class ExportersDetailView(generic.edit.UpdateView):
         if json_string is None:
             return None
 
+        logging.debug(f"Got {json_string} from session for exporter {exporter_key}")
+
         json_data = json.loads(json_string)
 
         for key in ('moment_from', 'moment_to'):
@@ -180,7 +184,7 @@ class ExportersDetailView(generic.edit.UpdateView):
                 "in the URLconf."
             )
 
-        exporter = db.DatabaseContext.get_exporter_by_id(pk)
+        exporter = db.DatabaseContext().get_exporter_by_id(pk)
 
         if not exporter.disabled:
             self.init_instance_managers(exporter.exporter_registry.factory)
@@ -234,7 +238,7 @@ class ExportersDetailView(generic.edit.UpdateView):
             self,
             moment_from: datetime.datetime,
             moment_to: datetime.datetime) -> typing.Optional[typing.List[HistoryDataItem]]:
-        cached_history_data = StaticDataCache.get_history_data(
+        cached_history_data = StaticDataCache().get_history_data(
             self.object,
             moment_from,
             moment_to)
@@ -374,18 +378,21 @@ class ExportersDetailView(generic.edit.UpdateView):
 
     def form_valid(self, form: ExporterDownloadForm):
         cleaned_data: dict[str, typing.Any] = form.cleaned_data
+        self.logger.debug(f"Got cleaned data: {cleaned_data}")
         moment_from, moment_to = cleaned_data['moment_from'], cleaned_data['moment_to']
 
         if '_download' in self.request.POST:
+            self.logger.info("Try to download data")
+
             if moment_from > moment_to:
                 form.add_error(
                     None,
-                    {'moment_from': f"Moment from is greater then moment to",
-                     'moment_to': f"Moment from is greater then moment to"}
+                    {'moment_from': "Moment from is greater then moment to",
+                     'moment_to': "Moment from is greater then moment to"}
                 )
                 return super().form_invalid(form)
 
-            _ = StaticDataCache.download_history_data(
+            _ = StaticDataCache().download_history_data(
                 self.object,
                 moment_from,
                 moment_to)
@@ -395,19 +402,21 @@ class ExportersDetailView(generic.edit.UpdateView):
             return super().form_valid(form)
 
         elif '_save' in self.request.POST:
+            self.logger.info("Try to save data")
+
             history_choices = cleaned_data['history']
             if not history_choices:
                 messages.info(self.request, "Nothing to save. No items was selected.")
                 return self.render_to_response(self.get_context_data(form=form))
 
-            cached_history_data = StaticDataCache.get_history_data(
+            cached_history_data = StaticDataCache().get_history_data(
                 self.object,
                 moment_from,
                 moment_to)
             if cached_history_data is None:
                 form.add_error(
                     None,
-                    f"Can't save data because downloaded data not found. Try to download it again."
+                    "Can't save data because downloaded data not found. Try to download it again."
                 )
                 return super().form_invalid(form)
 
@@ -431,7 +440,7 @@ class ExportersDetailView(generic.edit.UpdateView):
                 )
                 return super().form_invalid(form)
 
-            db.DatabaseContext.save_history_data(
+            db.DatabaseContext().save_history_data(
                 self.object.id,
                 history_data_to_save,
                 moment_from.date(),
@@ -439,10 +448,11 @@ class ExportersDetailView(generic.edit.UpdateView):
 
             messages.success(self.request, "History data was saved successfully.")
 
-            StaticDataCache.drop_history_data_from_cache(self.object, moment_from, moment_to)
+            StaticDataCache().drop_history_data_from_cache(self.object, moment_from, moment_to)
             self.drop_session_info()
 
             return super().form_valid(form)
 
         else:
+            self.logger.error("Bad POST request")
             return HttpResponseBadRequest()

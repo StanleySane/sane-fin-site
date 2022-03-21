@@ -1,11 +1,13 @@
 import collections
 import datetime
+import logging
 import typing
 
 from django.db import models, transaction
 from django.utils import timezone
 from sane_finances.communication.cachers import ExpirableCacher, ExpiryCalculator
 from sane_finances.communication.url_downloader import UrlDownloader
+from sane_finances.inspection import analyzers
 from sane_finances.sources.base import (
     InstrumentExporterRegistry, AnyInstrumentInfoProvider, InstrumentValue, InstrumentExporterFactory,
     DownloadParameterValuesStorage)
@@ -37,6 +39,7 @@ class DjangoDbCacher(ExpirableCacher):
     _expiry: datetime.timedelta = datetime.timedelta(days=1)
 
     def __init__(self, expiry_calculator: ExpiryCalculator = None):
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.expiry_calculator = DjangoExpiryCalculator() if expiry_calculator is None else expiry_calculator
 
     def has(self, url: str, parameters: typing.List[typing.Tuple[str, str]], headers: typing.Dict[str, str]) -> bool:
@@ -70,6 +73,7 @@ class DjangoDbCacher(ExpirableCacher):
 
     def clean(self):
         cached_item: typing.Optional[CachedItem]
+        self.logger.info("Perform cache clean")
         with transaction.atomic():
             for cached_item in self._queryset().all():
                 # noinspection PyTypeChecker
@@ -85,6 +89,8 @@ class DjangoDbCacher(ExpirableCacher):
                 else:
                     cached_item.expiry_moment = new_expiry_moment
                     cached_item.save()
+
+        self.logger.info("Cache clean finished")
 
     def retrieve(
             self,
@@ -145,7 +151,9 @@ class DjangoDbCacher(ExpirableCacher):
         return deleted != 0
 
     def full_clear(self):
+        self.logger.info("Perform full cache clean")
         self._queryset().all().delete()
+        self.logger.info("Full cache clean finished")
 
 
 class StaticDataCache:
@@ -157,26 +165,29 @@ class StaticDataCache:
     _history_data: typing.Dict[typing.Tuple, typing.Iterable[InstrumentValue]] = {}
     _parameter_values_storage_cache = {}
 
-    @classmethod
-    def get_available_exporters_registries(cls):
+    def __init__(self):
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
+    def get_available_exporters_registries(self):
         """ Guarantees that returned dictionary will be ordered in the same way
         and will have same keys (identities) during all program session
         (i.e. until web-server will be restarted)
         """
-        if cls._available_exporters_registries is None:
-            cls._available_exporters_registries = \
+        if self._available_exporters_registries is None:
+            self._available_exporters_registries = \
                 collections.OrderedDict(enumerate(get_all_instrument_exporters(), start=1))
+            self.logger.info(f"Initialised {len(self._available_exporters_registries)} available exporters registries")
 
-        return cls._available_exporters_registries
+        return self._available_exporters_registries
 
-    @classmethod
     def download_available_instruments(
-            cls,
+            self,
             cache_key: typing.Tuple,
             download_info_parameters: typing.Any,
             exporter_factory: InstrumentExporterFactory) -> typing.OrderedDict[str, AnyInstrumentInfoProvider]:
         """ Download all available instruments for exporter factory and store it in cache
         """
+        self.logger.info(f"Download instruments info for key {cache_key!r}")
         info_exporter = exporter_factory.create_info_exporter(UrlDownloader(DjangoDbCacher()))
         info_providers = info_exporter.export_instruments_info(download_info_parameters)
 
@@ -185,26 +196,28 @@ class StaticDataCache:
             for info_provider
             in info_providers})
 
-        cls._available_instruments[cache_key] = instruments
+        self._available_instruments[cache_key] = instruments
+        self.logger.info(f"Downloaded {len(instruments)} instruments info for key {cache_key!r}")
 
         return instruments
 
-    @classmethod
     def get_available_instruments(
-            cls,
+            self,
             cache_key: typing.Tuple) -> typing.Optional[typing.OrderedDict[str, AnyInstrumentInfoProvider]]:
         """ Get all available instruments from cache
         """
-        return cls._available_instruments.get(cache_key, None)
+        return self._available_instruments.get(cache_key, None)
 
-    @classmethod
     def download_history_data(
-            cls,
+            self,
             exporter: Exporter,
             moment_from: datetime.datetime,
             moment_to: datetime.datetime) -> typing.Iterable[InstrumentValue]:
         """ Download history data for exporter factory and store it in cache
         """
+        cache_key = (exporter.id, moment_from, moment_to)
+        self.logger.info(f"Download history data for key {cache_key}")
+
         history_exporter = exporter.exporter_registry.factory.create_history_values_exporter(
             UrlDownloader(DjangoDbCacher()))
         history_values = history_exporter.export_instrument_history_values(
@@ -215,46 +228,46 @@ class StaticDataCache:
                         for history_value
                         in history_values]
 
-        cache_key = (exporter.id, moment_from, moment_to)
-        cls._history_data[cache_key] = history_data
+        self._history_data[cache_key] = history_data
+        self.logger.info(f"Downloaded {len(history_data)} history data items for key {cache_key!r}")
 
         return history_data
 
-    @classmethod
     def get_history_data(
-            cls,
+            self,
             exporter: Exporter,
             moment_from: datetime.datetime,
             moment_to: datetime.datetime) -> typing.Optional[typing.Iterable[InstrumentValue]]:
         """ Get history data from cache
         """
         cache_key = (exporter.id, moment_from, moment_to)
-        return cls._history_data.get(cache_key, None)
+        return self._history_data.get(cache_key, None)
 
-    @classmethod
     def drop_history_data_from_cache(
-            cls,
+            self,
             exporter: Exporter,
             moment_from: datetime.datetime,
             moment_to: datetime.datetime):
         """ Drop data from internal cache
         """
         cache_key = (exporter.id, moment_from, moment_to)
-        if cache_key in cls._history_data:
-            del cls._history_data[cache_key]
+        if cache_key in self._history_data:
+            del self._history_data[cache_key]
 
-    @classmethod
     def download_parameter_values_storage(
-            cls,
+            self,
             instrument_exporter_factory: InstrumentExporterFactory) -> DownloadParameterValuesStorage:
         """ Create or get from internal cache ``DownloadParameterValuesStorage``
         """
-        if instrument_exporter_factory not in cls._parameter_values_storage_cache:
+        if instrument_exporter_factory not in self._parameter_values_storage_cache:
+            factory_name = analyzers.get_full_path(instrument_exporter_factory.__class__)
+            self.logger.info(f"Create DownloadParameterValuesStorage for {factory_name}")
             downloader = UrlDownloader(DjangoDbCacher())
 
             parameter_values_storage = \
                 instrument_exporter_factory.create_download_parameter_values_storage(downloader)
             parameter_values_storage.reload()
-            cls._parameter_values_storage_cache[instrument_exporter_factory] = parameter_values_storage
+            self._parameter_values_storage_cache[instrument_exporter_factory] = parameter_values_storage
+            self.logger.info(f"DownloadParameterValuesStorage for {factory_name} created")
 
-        return cls._parameter_values_storage_cache[instrument_exporter_factory]
+        return self._parameter_values_storage_cache[instrument_exporter_factory]

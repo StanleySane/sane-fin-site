@@ -100,7 +100,7 @@ class FormFieldsManager:
 
         enums_field_data = self.field_type_mapping.get(enum.Enum, None)
         if enums_field_data is None:
-            raise ValueError(f"Not found field map for enums")
+            raise ValueError("Not found field map for enums")
 
         field_type_mapping = (
                 list(self.field_type_mapping.items()) +

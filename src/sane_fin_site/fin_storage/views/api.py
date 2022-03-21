@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import logging
 
 from django.http import HttpResponseBadRequest, JsonResponse, HttpResponseNotFound
 from django.utils import timezone
@@ -8,6 +9,7 @@ from sane_finances.sources import computing
 from sane_finances.sources.base import InstrumentValue
 
 from .. import db
+from .. import models
 
 
 class JsonHistoryDataView(generic.TemplateView):
@@ -21,25 +23,37 @@ class JsonHistoryDataView(generic.TemplateView):
     date_format = '%Y-%m-%d'
     moment_format = '%Y-%m-%d %H:%M:%S'
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
     def render_to_response(self, context, **response_kwargs):
         exporter_code, date_from, date_to = self.kwargs['code'], self.kwargs['date_from'], self.kwargs['date_to']
         moment_from = datetime.datetime.combine(date_from, datetime.time.min, tzinfo=timezone.get_current_timezone())
         moment_to = datetime.datetime.combine(date_to, datetime.time.min, tzinfo=moment_from.tzinfo)
 
         intraday = str(self.request.GET.get(self.intraday_query_param_name, 'no')).lower()
+        fill_gaps = str(self.request.GET.get(self.fill_gaps_query_param_name, 'no')).lower()
+
+        self.logger.info(f"Try to get JSON instrument history data for {exporter_code!r} "
+                         f"{date_from.isoformat()}..{date_to.isoformat()}, "
+                         f"intraday={intraday!r}, fill_gaps={fill_gaps!r}")
+
         intraday = {'yes': True, 'no': False}.get(intraday, None)
         if intraday is None:
+            self.logger.error("Bad intraday value")
             return HttpResponseBadRequest()
 
-        fill_gaps = str(self.request.GET.get(self.fill_gaps_query_param_name, 'no')).lower()
         fill_gaps = {'yes': True, 'no': False}.get(fill_gaps, None)
         if fill_gaps is None:
+            self.logger.error("Bad fill_gaps value")
             return HttpResponseBadRequest()
 
         # noinspection PyUnresolvedReferences
         try:
-            exporter = db.DatabaseContext.get_exporter_by_code(exporter_code)
+            exporter = db.DatabaseContext().get_exporter_by_code(exporter_code)
         except models.Exporter.DoesNotExist:
+            self.logger.error(f"Exporter {exporter_code!r} not found")
             return HttpResponseNotFound()
 
         history_data = exporter.history_data
@@ -73,7 +87,7 @@ class JsonHistoryDataView(generic.TemplateView):
                      for moment, value
                      in result_data])
 
-        return JsonResponse(result, headers={'Access-Control-Allow-Origin': '*'})
+        return JsonResponse(result)
 
 
 class JsonComposeDataView(generic.TemplateView):
@@ -87,6 +101,10 @@ class JsonComposeDataView(generic.TemplateView):
     date_format = '%Y-%m-%d'
     moment_format = '%Y-%m-%d %H:%M:%S'
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
     def render_to_response(self, context, **response_kwargs):
         exporter1_code, exporter2_code = self.kwargs['code1'], self.kwargs['code2']
         compose_type_string = self.kwargs['compose_type']
@@ -95,26 +113,36 @@ class JsonComposeDataView(generic.TemplateView):
         moment_to = datetime.datetime.combine(date_to, datetime.time.min, tzinfo=moment_from.tzinfo)
 
         intraday = str(self.request.GET.get(self.intraday_query_param_name, 'no')).lower()
+        fill_gaps = str(self.request.GET.get(self.fill_gaps_query_param_name, 'no')).lower()
+
+        self.logger.info(f"Try to get JSON composed history data "
+                         f"for {exporter1_code!r} {compose_type_string} {exporter2_code!r}"
+                         f"{date_from.isoformat()}..{date_to.isoformat()}, "
+                         f"intraday={intraday!r}, fill_gaps={fill_gaps!r}")
+
         intraday = {'yes': True, 'no': False}.get(intraday, None)
         if intraday is None:
+            self.logger.error("Bad intraday value")
             return HttpResponseBadRequest()
 
-        fill_gaps = str(self.request.GET.get(self.fill_gaps_query_param_name, 'no')).lower()
         fill_gaps = {'yes': True, 'no': False}.get(fill_gaps, None)
         if fill_gaps is None:
+            self.logger.error("Bad fill_gaps value")
             return HttpResponseBadRequest()
 
         compose_type = computing.ComposeType(compose_type_string)
 
         # noinspection PyUnresolvedReferences
         try:
-            exporter1 = db.DatabaseContext.get_exporter_by_code(exporter1_code)
+            exporter1 = db.DatabaseContext().get_exporter_by_code(exporter1_code)
         except models.Exporter.DoesNotExist:
+            self.logger.error(f"Exporter {exporter1_code!r} not found")
             return HttpResponseNotFound()
         # noinspection PyUnresolvedReferences
         try:
-            exporter2 = db.DatabaseContext.get_exporter_by_code(exporter2_code)
+            exporter2 = db.DatabaseContext().get_exporter_by_code(exporter2_code)
         except models.Exporter.DoesNotExist:
+            self.logger.error(f"Exporter {exporter2_code!r} not found")
             return HttpResponseNotFound()
 
         data = []
@@ -160,4 +188,4 @@ class JsonComposeDataView(generic.TemplateView):
                      for moment, value
                      in composed_data))
 
-        return JsonResponse(result, headers={'Access-Control-Allow-Origin': '*'})
+        return JsonResponse(result)

@@ -1,4 +1,5 @@
 import json
+import logging
 import typing
 
 from django import forms
@@ -84,6 +85,7 @@ class ImportSettingsView(generic.edit.CreateView):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
         self.save_succeeded = False
         self.settings_data = None
@@ -181,10 +183,12 @@ class ImportSettingsView(generic.edit.CreateView):
             if settings_file is None:
                 form.add_error(
                     None,
-                    {'settings_file': f"Select file to parse"}
+                    {'settings_file': "Select file to parse"}
                 )
                 self.drop_session_info()
                 return super().form_invalid(form)
+
+            self.logger.info(f"Upload file {settings_file.name!r}")
 
             try:
                 settings_file_content = settings_file.read().decode()
@@ -203,10 +207,12 @@ class ImportSettingsView(generic.edit.CreateView):
             return super().form_valid(form)
 
         elif '_save' in self.request.POST:
+            self.logger.info("Try to save uploaded file")
+
             if self.settings_data is None:
                 form.add_error(
                     None,
-                    f"Can't save data because setting data not found. Try to parse it again."
+                    "Can't save data because setting data not found. Try to parse it again."
                 )
                 return super().form_invalid(form)
 
@@ -262,13 +268,15 @@ class ImportSettingsView(generic.edit.CreateView):
                 selected_history_data,
                 selected_downloaded_intervals)
 
-            messages.success(self.request,
-                             f"Settings was saved successfully for the next exporters: "
-                             f"{', '.join(selected_exporters | selected_history_data | selected_downloaded_intervals)}")
+            message = f"Settings was saved successfully for the next exporters: "\
+                      f"{', '.join(selected_exporters | selected_history_data | selected_downloaded_intervals)}"
+            self.logger.info(message)
+            messages.success(self.request, message)
             self.drop_session_info()
 
             self.save_succeeded = True
             return super().form_valid(form)
 
         else:
+            self.logger.error("Bad POST request")
             return HttpResponseBadRequest()

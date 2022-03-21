@@ -1,4 +1,5 @@
 import datetime
+import logging
 import typing
 
 from django.db import transaction, models as django_models
@@ -16,8 +17,12 @@ T = typing.TypeVar('T')
 
 class DatabaseContext:
 
-    @classmethod
-    def get_all_source_api_actualities(cls) -> typing.Iterable[SourceApiActualityInfo]:
+    def __init__(self):
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
+    def get_all_source_api_actualities(self) -> typing.Iterable[SourceApiActualityInfo]:
+        self.logger.info("Read all source API actualities")
+
         # noinspection PyUnresolvedReferences
         queryset: django_models.QuerySet = models.SourceApiActuality.objects
         source_api_actuality: models.SourceApiActuality
@@ -34,12 +39,15 @@ class DatabaseContext:
             in queryset.all())
 
     # noinspection PyUnresolvedReferences
-    @classmethod
     def update_source_api_actuality(
-            cls,
+            self,
             exporter_type: str,
             check_error_message: str,
             check_moment: datetime.datetime):
+        self.logger.info(f"Update source API actuality for {exporter_type!r} "
+                         f"on {check_moment.isoformat()} "
+                         f"with error message {check_error_message!r}")
+
         queryset: django_models.QuerySet = models.SourceApiActuality.objects
 
         attrs_to_update = {'check_error_message': check_error_message, 'last_check_moment': check_moment}
@@ -57,11 +65,13 @@ class DatabaseContext:
 
             source_api_actuality.save()
 
+        self.logger.info(f"Source API actuality for {exporter_type!r} updated")
+
         return source_api_actuality.pk
 
-    @classmethod
+    # noinspection PyMethodMayBeStatic
     def _build_instance(
-            cls,
+            self,
             json_string: str,
             root_data_class: typing.Type[T],
             download_param_values_storage: DownloadParameterValuesStorage,
@@ -83,14 +93,14 @@ class DatabaseContext:
         instance = instance_builder.build_instance(factory_data)
         return instance
 
-    @classmethod
-    def _queryset(cls) -> django_models.QuerySet:
+    # noinspection PyMethodMayBeStatic
+    def _queryset(self) -> django_models.QuerySet:
         # noinspection PyUnresolvedReferences
         return models.Exporter.objects
 
-    @classmethod
+    # noinspection PyMethodMayBeStatic
     def _get_exporter_registry(
-            cls,
+            self,
             exporter_type: str,
             error_messages: typing.List[str]) -> typing.Optional[InstrumentExporterRegistry]:
         factory_class = analyzers.get_by_full_path(exporter_type)
@@ -103,9 +113,8 @@ class DatabaseContext:
 
         return exporter_registry
 
-    @classmethod
     def _create_exporter(
-            cls,
+            self,
             exporter_model: models.Exporter,
             with_history_data: bool = True,
             with_download_parameters: bool = True) -> Exporter:
@@ -116,15 +125,16 @@ class DatabaseContext:
         downloaded_intervals = []
 
         raw_exporter_type = exporter_model.exporter_type
-        exporter_registry = cls._get_exporter_registry(exporter_model.exporter_type, error_messages)
+        exporter_registry = self._get_exporter_registry(exporter_model.exporter_type, error_messages)
         if exporter_registry is not None and with_download_parameters:
-            download_param_values_storage = StaticDataCache.download_parameter_values_storage(exporter_registry.factory)
-            download_info_parameters = cls._build_instance(
+            download_param_values_storage = \
+                StaticDataCache().download_parameter_values_storage(exporter_registry.factory)
+            download_info_parameters = self._build_instance(
                 exporter_model.download_info_parameters,
                 exporter_registry.factory.download_parameters_factory.download_info_parameters_class,
                 download_param_values_storage,
                 exporter_registry.factory.download_parameters_factory.download_info_parameters_factory)
-            download_history_parameters = cls._build_instance(
+            download_history_parameters = self._build_instance(
                 exporter_model.download_history_parameters,
                 exporter_registry.factory.download_parameters_factory.download_history_parameters_class,
                 download_param_values_storage,
@@ -172,53 +182,49 @@ class DatabaseContext:
             has_gaps=has_gaps,
             is_actual=is_actual)
 
-    @classmethod
-    def get_all_exporters(cls) -> typing.Iterable[Exporter]:
-        return tuple(cls._create_exporter(exporter_model, with_history_data=False, with_download_parameters=False)
+    def get_all_exporters(self) -> typing.Iterable[Exporter]:
+        return tuple(self._create_exporter(exporter_model, with_history_data=False, with_download_parameters=False)
                      for exporter_model
-                     in cls._queryset().all()
+                     in self._queryset().all()
                      .prefetch_related('downloaded_intervals'))
 
-    @classmethod
-    def is_exporter_code_unique(cls, exporter_code: str, pk: typing.Optional):
+    def is_exporter_code_unique(self, exporter_code: str, pk: typing.Optional):
         if pk is None:
-            return not (cls._queryset()
+            return not (self._queryset()
                         .filter(unique_code=exporter_code)
                         .exists())
 
-        return not (cls._queryset()
+        return not (self._queryset()
                     .filter(unique_code=exporter_code)
                     .exclude(pk=pk)
                     .exists())
 
-    @classmethod
-    def get_all_exporters_as_model(cls) -> typing.Iterable[models.Exporter]:
-        return cls._queryset().all()
+    def get_all_exporters_as_model(self) -> typing.Iterable[models.Exporter]:
+        return self._queryset().all()
 
-    @classmethod
-    def get_exporters_as_model(cls, exporters: typing.Iterable[Exporter]) -> typing.Iterable[models.Exporter]:
-        return (cls._queryset().all()
+    def get_exporters_as_model(self, exporters: typing.Iterable[Exporter]) -> typing.Iterable[models.Exporter]:
+        return (self._queryset().all()
                 .prefetch_related('history_data')
                 .prefetch_related('downloaded_intervals')
                 .filter(pk__in=[exporter.id for exporter in exporters]))
 
-    @classmethod
-    def get_exporter_by_id(cls, pk) -> Exporter:
-        return cls._create_exporter(cls._queryset()
-                                    .prefetch_related('history_data')
-                                    .prefetch_related('downloaded_intervals')
-                                    .get(pk=pk))
+    def get_exporter_by_id(self, pk) -> Exporter:
+        return self._create_exporter(
+            self._queryset()
+                .prefetch_related('history_data')
+                .prefetch_related('downloaded_intervals')
+                .get(pk=pk))
 
-    @classmethod
-    def get_exporter_by_code(cls, unique_code: str) -> Exporter:
-        return cls._create_exporter(cls._queryset()
-                                    .prefetch_related('history_data')
-                                    .prefetch_related('downloaded_intervals')
-                                    .get(unique_code=unique_code))
+    def get_exporter_by_code(self, unique_code: str) -> Exporter:
+        return self._create_exporter(
+            self._queryset()
+                .prefetch_related('history_data')
+                .prefetch_related('downloaded_intervals')
+                .get(unique_code=unique_code))
 
-    @classmethod
+    # noinspection PyMethodMayBeStatic
     def _serialize_attr_values(
-            cls,
+            self,
             factory: InstrumentExporterFactory,
             flatten_download_parameters: bool,
             **attr_values):
@@ -230,7 +236,7 @@ class DatabaseContext:
                     'download_history_parameters': factory.download_parameters_factory.download_history_parameters_class
                 }
                 if attr_name in root_data_classes:
-                    download_param_values_storage = StaticDataCache.download_parameter_values_storage(factory)
+                    download_param_values_storage = StaticDataCache().download_parameter_values_storage(factory)
                     instance_analyzer = analyzers.FlattenedAnnotatedInstanceAnalyzer(
                         root_data_classes[attr_name],
                         download_param_values_storage)
@@ -244,16 +250,17 @@ class DatabaseContext:
 
         return new_attr_values
 
-    @classmethod
-    def update_exporter(cls, pk, flatten_download_parameters: bool, **update_attrs) -> None:
-        exporter: models.Exporter = cls._queryset().get(pk=pk)
+    def update_exporter(self, pk, flatten_download_parameters: bool, **update_attrs) -> None:
+        self.logger.info(f"Update exporter with pk={pk} with attribute values {update_attrs}")
+
+        exporter: models.Exporter = self._queryset().get(pk=pk)
         error_messages = []
-        exporter_registry = cls._get_exporter_registry(
+        exporter_registry = self._get_exporter_registry(
             update_attrs.get('exporter_type', exporter.exporter_type),
             error_messages)
 
         if exporter_registry is not None:
-            update_attrs = cls._serialize_attr_values(
+            update_attrs = self._serialize_attr_values(
                 exporter_registry.factory,
                 flatten_download_parameters,
                 **update_attrs)
@@ -270,13 +277,14 @@ class DatabaseContext:
 
         exporter.save()
 
-    @classmethod
     def create_exporter(
-            cls,
+            self,
             exporter_registry: InstrumentExporterRegistry,
             flatten_download_parameters: bool,
             **create_attrs) -> typing.Any:
-        create_attrs = cls._serialize_attr_values(
+        self.logger.info(f"Create exporter from registry {exporter_registry} with attributes {create_attrs}")
+
+        create_attrs = self._serialize_attr_values(
             exporter_registry.factory,
             flatten_download_parameters,
             **create_attrs)
@@ -284,14 +292,15 @@ class DatabaseContext:
         exporter_type = analyzers.get_full_path(exporter_registry.factory.__class__)
         create_attrs['exporter_type'] = exporter_type
 
-        exporter = cls._queryset().create(**create_attrs)
+        exporter = self._queryset().create(**create_attrs)
 
         return exporter.id
 
-    @classmethod
-    def update_or_create(cls, exporter: Exporter) -> bool:
+    def update_or_create(self, exporter: Exporter) -> bool:
+        self.logger.info(f"Update or create exporter {exporter.unique_code!r}")
+
         error_messages = []
-        exporter_registry = cls._get_exporter_registry(exporter.raw_exporter_type, error_messages)
+        exporter_registry = self._get_exporter_registry(exporter.raw_exporter_type, error_messages)
 
         if error_messages:
             error_message = '\n'.join(error_messages)
@@ -309,54 +318,58 @@ class DatabaseContext:
         exporter_model: typing.Optional[models.Exporter] = None
         # noinspection PyUnresolvedReferences
         try:
-            exporter_model = cls._queryset().get(unique_code=exporter.unique_code)
+            exporter_model = self._queryset().get(unique_code=exporter.unique_code)
         except models.Exporter.DoesNotExist:
             pass
 
         if exporter_model is None:
-            _ = cls.create_exporter(exporter_registry, False, **attr_values)
+            _ = self.create_exporter(exporter_registry, False, **attr_values)
         else:
-            cls.update_exporter(exporter_model.pk, False, **attr_values)
+            self.update_exporter(exporter_model.pk, False, **attr_values)
 
         return exporter_model is None
 
-    @classmethod
-    def delete_exporter(cls, pk):
-        cls._queryset().get(pk=pk).delete()
+    def delete_exporter(self, pk):
+        self.logger.info(f"Delete exporter with pk={pk}")
+        self._queryset().get(pk=pk).delete()
 
-    @classmethod
     def update_or_create_history_data(
-            cls,
+            self,
             exporter: models.Exporter,
-            history_data: typing.Iterable[InstrumentValue]):
+            history_data: typing.Collection[InstrumentValue]):
+        self.logger.info(f"Update or save {len(history_data)} history data items "
+                         f"for exporter {exporter.unique_code!r}")
         for history_item in history_data:
             _ = models.InstrumentValue.objects.update_or_create(
                 exporter=exporter, moment=history_item.moment,
                 defaults={'value': history_item.value})
 
-    @classmethod
     def update_or_create_downloaded_intervals(
-            cls,
+            self,
             exporter: models.Exporter,
-            downloaded_intervals: typing.Iterable[typing.Tuple[datetime.date, datetime.date]]):
+            downloaded_intervals: typing.Collection[typing.Tuple[datetime.date, datetime.date]]):
+        self.logger.info(f"Update or save {len(downloaded_intervals)} downloaded intervals "
+                         f"for exporter {exporter.unique_code!r}")
         for date_from, date_to in downloaded_intervals:
             _ = models.DownloadedInterval.objects.update_or_create(
                 exporter=exporter,
                 date_from=date_from,
                 date_to=date_to)
 
-    @classmethod
     def save_history_data(
-            cls,
+            self,
             pk,
             history_data: typing.Collection[InstrumentValue],
             date_from: datetime.date,
             date_to: datetime.date):
-        exporter: models.Exporter = (cls._queryset()
-                                     .prefetch_related('downloaded_intervals')
-                                     .get(pk=pk))
+        self.logger.info(f"Save {len(history_data)} history data items "
+                         f"for exporter with pk={pk} "
+                         f"inside {date_from.isoformat()}..{date_to.isoformat()}")
 
         with transaction.atomic(savepoint=False):
+            exporter: models.Exporter = (self._queryset()
+                                         .prefetch_related('downloaded_intervals')
+                                         .get(pk=pk))
 
             min_history_date = (min(history_data, key=lambda it: it.moment.date()).moment.date()
                                 if history_data
@@ -431,4 +444,7 @@ class DatabaseContext:
                         date_from=min_history_date,
                         date_to=max_history_date)
 
-            cls.update_or_create_history_data(exporter, history_data)
+            self.update_or_create_history_data(exporter, history_data)
+
+        self.logger.info(f"History data for exporter with pk={pk} "
+                         f"inside {date_from.isoformat()}..{date_to.isoformat()} saved successfully")

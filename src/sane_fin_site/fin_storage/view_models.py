@@ -70,7 +70,7 @@ class SourceApiActualityInfo:
     def status(self):
         if self.last_check_moment is None:
             return 'unknown'
-        elif self.check_error_message:
+        if self.check_error_message:
             return 'failed'
         return 'valid'
 

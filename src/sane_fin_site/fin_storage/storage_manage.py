@@ -3,6 +3,7 @@ import collections
 import datetime
 import decimal
 import json
+import logging
 import pathlib
 import typing
 
@@ -131,7 +132,7 @@ class SpecificSettingsManager(abc.ABC):
     def serialize_settings(
             self,
             file_name: str,
-            exporters: typing.Iterable[view_models.Exporter],
+            exporters: typing.Collection[view_models.Exporter],
             target_stream) -> typing.Optional[str]:
         raise NotImplementedError
 
@@ -154,12 +155,18 @@ class SpecificSettingsManager(abc.ABC):
 
 class DjangoXmlSettingsManager(SpecificSettingsManager):
 
+    def __init__(self):
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.database_context = db.DatabaseContext()
+
     def serialize_settings(
             self,
             file_name: str,
-            exporters: typing.Iterable[view_models.Exporter],
+            exporters: typing.Collection[view_models.Exporter],
             target_stream) -> typing.Optional[str]:
-        exporters_as_model = db.DatabaseContext.get_exporters_as_model(exporters)
+        self.logger.info(f"Serialize settings for {len(exporters)} exporters into {file_name}")
+
+        exporters_as_model = self.database_context.get_exporters_as_model(exporters)
         data_to_export = []
 
         for exporter_as_model in exporters_as_model:
@@ -176,20 +183,26 @@ class DjangoXmlSettingsManager(SpecificSettingsManager):
             use_natural_foreign_keys=True,
             use_natural_primary_keys=True)
 
+        self.logger.info("Serialization finished")
+
         return None
 
     def deserialize_settings(
             self,
             settings_file_name: str,
             settings_file_content: str) -> DjangoImportSettingsData:
+        self.logger.info(f"Deserialize settings from {settings_file_name}")
+
         settings_items: collections.OrderedDict[str, DjangoImportSettingsItem] = collections.OrderedDict()
 
         if settings_file_content:
+            self.logger.debug("Deserialize Django XML")
             deserialized_objects: typing.List[serializers.base.DeserializedObject]
             deserialized_objects = list(serializers.deserialize(
                 "xml",
                 settings_file_content,
                 handle_forward_references=True))
+            self.logger.debug(f"Deserialized {len(deserialized_objects)} objects from Django XML")
 
             exporters: collections.OrderedDict[str, serializers.base.DeserializedObject] = collections.OrderedDict()
             instrument_values: typing.Dict[str, typing.List[serializers.base.DeserializedObject]] = {}
@@ -251,6 +264,7 @@ class DjangoXmlSettingsManager(SpecificSettingsManager):
             file_content=settings_file_content,
             items=tuple(settings_items.values())
         )
+        self.logger.info(f"Settings deserialized from {settings_file_name}")
 
         return settings_data
 
@@ -261,6 +275,7 @@ class DjangoXmlSettingsManager(SpecificSettingsManager):
             history_data_codes: typing.Set[str],
             downloaded_intervals_codes: typing.Set[str]):
         assert isinstance(settings_data, DjangoImportSettingsData)
+        self.logger.info("Save settings data")
 
         settings_items_by_exporter_code: typing.Dict[str, DjangoImportSettingsItem] = {
             settings_item.exporter_unique_code: settings_item
@@ -270,14 +285,17 @@ class DjangoXmlSettingsManager(SpecificSettingsManager):
         with transaction.atomic(savepoint=False):
             for selected_exporter_code in exporters_codes:
                 deserialized_exporter = settings_items_by_exporter_code[selected_exporter_code].exporter_model
+                self.logger.debug(f"Save deserialized exporter with code {selected_exporter_code}")
                 deserialized_exporter.save()
 
             all_db_exporters = {exporter_model.unique_code: exporter_model
                                 for exporter_model
-                                in db.DatabaseContext.get_all_exporters_as_model()}
+                                in self.database_context.get_all_exporters_as_model()}
 
             # save history data
             for selected_exporter_code in history_data_codes:
+                self.logger.debug(f"Save deserialized instrument values "
+                                  f"for exporter with code {selected_exporter_code}")
                 for deserialized_instrument_value in \
                         settings_items_by_exporter_code[selected_exporter_code].history_data:
                     if getattr(deserialized_instrument_value.object, 'exporter', None) is None:
@@ -286,14 +304,22 @@ class DjangoXmlSettingsManager(SpecificSettingsManager):
 
             # save downloaded intervals
             for selected_exporter_code in downloaded_intervals_codes:
+                self.logger.debug(f"Save downloaded intervals "
+                                  f"for exporter with code {selected_exporter_code}")
                 for deserialized_downloaded_interval in \
                         settings_items_by_exporter_code[selected_exporter_code].downloaded_intervals:
                     if getattr(deserialized_downloaded_interval.object, 'exporter', None) is None:
                         deserialized_downloaded_interval.object.exporter = all_db_exporters[selected_exporter_code]
                     deserialized_downloaded_interval.save()
 
+        self.logger.info("Settings data saved")
+
 
 class JsonSettingsManager(SpecificSettingsManager):
+
+    def __init__(self):
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.database_context = db.DatabaseContext()
 
     # noinspection PyMethodMayBeStatic
     def as_dict(self, exporter: view_models.Exporter):
@@ -325,10 +351,12 @@ class JsonSettingsManager(SpecificSettingsManager):
     def serialize_settings(
             self,
             file_name: str,
-            exporters: typing.Iterable[view_models.Exporter],
+            exporters: typing.Collection[view_models.Exporter],
             target_stream) -> typing.Optional[str]:
+        self.logger.info(f"Serialize settings for {len(exporters)} exporters into {file_name}")
+
         exporters_with_full_data = [
-            db.DatabaseContext.get_exporter_by_code(exporter.unique_code)
+            self.database_context.get_exporter_by_code(exporter.unique_code)
             for exporter in
             exporters]
 
@@ -341,6 +369,8 @@ class JsonSettingsManager(SpecificSettingsManager):
             ]
         }
         exporters_as_str = json.dumps(exporters_as_dict)
+
+        self.logger.info("Serialization finished")
         return exporters_as_str
 
     # noinspection PyMethodMayBeStatic
@@ -354,12 +384,17 @@ class JsonSettingsManager(SpecificSettingsManager):
             self,
             settings_file_name: str,
             settings_file_content: str) -> ImportSettingsData:
+        self.logger.info(f"Deserialize settings from {settings_file_name}")
+
         settings_items: collections.OrderedDict[str, JsonImportSettingsItem] = collections.OrderedDict()
 
         if settings_file_content:
+            self.logger.debug(f"Parse JSON from {settings_file_name}")
             json_data = json.loads(settings_file_content)
+
             # version = json_data['version']
             exporters_data = json_data['exporters']
+            self.logger.debug(f"Parsed {len(exporters_data)} exporters")
             for exporter_data in exporters_data:
                 # noinspection PyTypeChecker
                 exporter = view_models.Exporter(
@@ -381,7 +416,7 @@ class JsonSettingsManager(SpecificSettingsManager):
                     downloaded_intervals=[]
                 )
 
-                is_new = db.DatabaseContext.is_exporter_code_unique(exporter.unique_code, None)
+                is_new = self.database_context.is_exporter_code_unique(exporter.unique_code, None)
 
                 history_data: typing.List[InstrumentValue, ...] = []
                 for history_data_item in exporter_data['history_data']:
@@ -416,6 +451,8 @@ class JsonSettingsManager(SpecificSettingsManager):
             items=tuple(settings_items.values())
         )
 
+        self.logger.info(f"Settings deserialized from {settings_file_name}")
+
         return settings_data
 
     def save_settings_data(
@@ -426,6 +463,8 @@ class JsonSettingsManager(SpecificSettingsManager):
             downloaded_intervals_codes: typing.Set[str]):
         assert isinstance(settings_data, JsonImportSettingsData)
 
+        self.logger.info("Save settings data")
+
         settings_items_by_exporter_code: typing.Dict[str, JsonImportSettingsItem] = {
             settings_item.exporter_unique_code: settings_item
             for settings_item
@@ -433,23 +472,25 @@ class JsonSettingsManager(SpecificSettingsManager):
 
         with transaction.atomic(savepoint=False):
             for selected_exporter_code in exporters_codes:
-                db.DatabaseContext.update_or_create(settings_items_by_exporter_code[selected_exporter_code].exporter)
+                self.database_context.update_or_create(settings_items_by_exporter_code[selected_exporter_code].exporter)
 
             all_db_exporters = {exporter_model.unique_code: exporter_model
                                 for exporter_model
-                                in db.DatabaseContext.get_all_exporters_as_model()}
+                                in self.database_context.get_all_exporters_as_model()}
 
             # save history data
             for selected_exporter_code in history_data_codes:
                 exporter = all_db_exporters[selected_exporter_code]
                 history_data = settings_items_by_exporter_code[selected_exporter_code].history_data
-                db.DatabaseContext.update_or_create_history_data(exporter, history_data)
+                self.database_context.update_or_create_history_data(exporter, history_data)
 
             # save downloaded intervals
             for selected_exporter_code in downloaded_intervals_codes:
                 exporter = all_db_exporters[selected_exporter_code]
                 downloaded_intervals = settings_items_by_exporter_code[selected_exporter_code].downloaded_intervals
-                db.DatabaseContext.update_or_create_downloaded_intervals(exporter, downloaded_intervals)
+                self.database_context.update_or_create_downloaded_intervals(exporter, downloaded_intervals)
+
+        self.logger.info("Settings data saved")
 
 
 class SettingsManager:
@@ -461,7 +502,7 @@ class SettingsManager:
     def serialize_settings(
             self,
             file_name: str,
-            exporters: typing.Iterable[view_models.Exporter],
+            exporters: typing.Collection[view_models.Exporter],
             target_stream) -> typing.Optional[str]:
         extension = pathlib.Path(file_name).suffix.lower()
         if extension not in self.managers:

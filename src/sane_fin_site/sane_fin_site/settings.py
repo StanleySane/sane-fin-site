@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-!1)+m2vmg+)#mmasmy0bqoww+uv#t=(a0a#804t-s6=^+q293w
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -128,22 +128,45 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = None
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    "filters": {
+        "require_debug_false": {
+            "()": "django.utils.log.RequireDebugFalse",
+        },
+        "require_debug_true": {
+            "()": "django.utils.log.RequireDebugTrue",
+        },
+    },
     'formatters': {
+        "django.server": {
+            "()": "django.utils.log.ServerFormatter",
+            "format": "[{server_time}] {message}",
+            "style": "{",
+        },
         'sane_finances': {
             '()': 'logging.Formatter',
             'fmt': '{asctime} [{name}] {levelname}: {message}',
             'style': '{',
-        }
+        },
     },
     'handlers': {
+        "django_console": {
+            "level": "INFO",
+            "filters": ["require_debug_true"],
+            "class": "logging.StreamHandler",
+        },
+        "django.server": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "django.server",
+        },
         'console': {
-            'level': 'DEBUG',
+            'level': ('DEBUG' if DEBUG else 'INFO'),
             'formatter': 'sane_finances',
             'class': 'logging.StreamHandler',
             'stream': 'ext://sys.stdout',
         },
         'file': {
-            'level': 'INFO',
+            'level': ('DEBUG' if DEBUG else 'INFO'),
             'formatter': 'sane_finances',
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': 'sanelog.log',
@@ -154,7 +177,20 @@ LOGGING = {
     'loggers': {
         'sane_finances': {
             'handlers': ['console', 'file'],
-            'level': 'DEBUG',
+            'level': ('DEBUG' if DEBUG else 'INFO'),
+        },
+        'fin_storage': {
+            'handlers': ['console', 'file'],
+            'level': ('DEBUG' if DEBUG else 'INFO'),
+        },
+        'django': {
+            'handlers': ['django_console', 'console', 'file'],
+            'level': 'INFO',
+        },
+        "django.server": {
+            "handlers": ["django.server", 'console', 'file'],
+            "level": "INFO",
+            "propagate": False,
         },
     }
 }
