@@ -23,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-!1)+m2vmg+)#mmasmy0bqoww+uv#t=(a0a#804t-s6=^+q293w'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*']
 
@@ -117,6 +117,15 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+STATIC_ROOT = BASE_DIR / STATIC_URL
+
+# Serve static files by ourselves (by special view)
+# In debug mode static files serves automatically by Django core
+# but in production we must serve static files by ourselves
+# using special view
+SERVE_STATIC = not DEBUG
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field

@@ -53,7 +53,7 @@ class JsonHistoryDataView(generic.TemplateView):
         try:
             exporter = db.DatabaseContext().get_exporter_by_code(exporter_code)
         except models.Exporter.DoesNotExist:
-            self.logger.error(f"Exporter {exporter_code!r} not found")
+            self.logger.warning(f"Exporter {exporter_code!r} not found")
             return HttpResponseNotFound()
 
         history_data = exporter.history_data
@@ -136,13 +136,13 @@ class JsonComposeDataView(generic.TemplateView):
         try:
             exporter1 = db.DatabaseContext().get_exporter_by_code(exporter1_code)
         except models.Exporter.DoesNotExist:
-            self.logger.error(f"Exporter {exporter1_code!r} not found")
+            self.logger.warning(f"Exporter {exporter1_code!r} not found")
             return HttpResponseNotFound()
         # noinspection PyUnresolvedReferences
         try:
             exporter2 = db.DatabaseContext().get_exporter_by_code(exporter2_code)
         except models.Exporter.DoesNotExist:
-            self.logger.error(f"Exporter {exporter2_code!r} not found")
+            self.logger.warning(f"Exporter {exporter2_code!r} not found")
             return HttpResponseNotFound()
 
         data = []

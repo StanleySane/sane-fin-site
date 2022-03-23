@@ -2,12 +2,13 @@
 @rem Run this script only once (!) over empty (!) database
 @rem Make sure of using correct Python version
 
-@cd .\src\sane_fin_site\
+@call activate_venv.bat
 
-@echo.
-@echo Start database initialization
+@cd ..\src\sane_fin_site\
 
+@echo Start database initialization for Python:
 @python --version
+
 @python manage.py migrate || goto :SomeError
 
 @echo.

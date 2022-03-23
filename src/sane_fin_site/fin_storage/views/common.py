@@ -1,5 +1,5 @@
-import typing
 import datetime
+import typing
 
 from django import forms
 from sane_finances.inspection import analyzers, serialize
