@@ -147,9 +147,9 @@ class SpecificSettingsManager(abc.ABC):
     def save_settings_data(
             self,
             settings_data: ImportSettingsData,
-            exporters_codes: typing.Set[str],
-            history_data_codes: typing.Set[str],
-            downloaded_intervals_codes: typing.Set[str]):
+            exporters_codes: typing.Iterable[str],
+            history_data_codes: typing.Iterable[str],
+            downloaded_intervals_codes: typing.Iterable[str]):
         raise NotImplementedError
 
 
@@ -271,9 +271,9 @@ class DjangoXmlSettingsManager(SpecificSettingsManager):
     def save_settings_data(
             self,
             settings_data: DjangoImportSettingsData,
-            exporters_codes: typing.Set[str],
-            history_data_codes: typing.Set[str],
-            downloaded_intervals_codes: typing.Set[str]):
+            exporters_codes: typing.Iterable[str],
+            history_data_codes: typing.Iterable[str],
+            downloaded_intervals_codes: typing.Iterable[str]):
         assert isinstance(settings_data, DjangoImportSettingsData)
         self.logger.info("Save settings data")
 
@@ -458,9 +458,9 @@ class JsonSettingsManager(SpecificSettingsManager):
     def save_settings_data(
             self,
             settings_data: JsonImportSettingsData,
-            exporters_codes: typing.Set[str],
-            history_data_codes: typing.Set[str],
-            downloaded_intervals_codes: typing.Set[str]):
+            exporters_codes: typing.Iterable[str],
+            history_data_codes: typing.Iterable[str],
+            downloaded_intervals_codes: typing.Iterable[str]):
         assert isinstance(settings_data, JsonImportSettingsData)
 
         self.logger.info("Save settings data")
@@ -525,9 +525,9 @@ class SettingsManager:
     def save_settings_data(
             self,
             settings_data: ImportSettingsData,
-            exporters_codes: typing.Set[str],
-            history_data_codes: typing.Set[str],
-            downloaded_intervals_codes: typing.Set[str]):
+            exporters_codes: typing.Iterable[str],
+            history_data_codes: typing.Iterable[str],
+            downloaded_intervals_codes: typing.Iterable[str]):
         extension = pathlib.Path(settings_data.file_name).suffix.lower()
         if extension not in self.managers:
             raise ValueError(f"Unknown settings file extension {extension!r}")

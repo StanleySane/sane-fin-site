@@ -216,9 +216,9 @@ class ImportSettingsView(generic.edit.CreateView):
                 )
                 return super().form_invalid(form)
 
-            selected_exporters: typing.Set[str] = set(cleaned_data['settings_items'])
-            selected_history_data: typing.Set[str] = set(self.request.POST.getlist('_selected_history_data'))
-            selected_downloaded_intervals: typing.Set[str] = set(
+            selected_exporters: typing.List[str] = list(cleaned_data['settings_items'])
+            selected_history_data: typing.List[str] = list(self.request.POST.getlist('_selected_history_data'))
+            selected_downloaded_intervals: typing.List[str] = list(
                 self.request.POST.getlist('_selected_downloaded_intervals'))
             if not selected_exporters and not selected_history_data and not selected_downloaded_intervals:
                 messages.info(self.request, "Nothing to save. No items was selected.")
@@ -246,14 +246,14 @@ class ImportSettingsView(generic.edit.CreateView):
                 return super().form_invalid(form)
 
             # checkout items for the new exporters with no corresponding exporter to save
-            items_without_exporter_to_save = [
+            items_without_exporter_to_save = set([
                 selected_data_item
                 for selected_data_item
-                in selected_history_data | selected_downloaded_intervals
+                in selected_history_data + selected_downloaded_intervals
                 if (selected_data_item not in selected_exporters
                     and (selected_data_item not in settings_items_by_exporter_code
                          or settings_items_by_exporter_code[selected_data_item].is_new))
-            ]
+            ])
             if items_without_exporter_to_save:
                 form.add_error(
                     'settings_items',
@@ -269,7 +269,7 @@ class ImportSettingsView(generic.edit.CreateView):
                 selected_downloaded_intervals)
 
             message = f"Settings was saved successfully for the next exporters: "\
-                      f"{', '.join(selected_exporters | selected_history_data | selected_downloaded_intervals)}"
+                      f"{', '.join(set(selected_exporters + selected_history_data + selected_downloaded_intervals))}"
             self.logger.info(message)
             messages.success(self.request, message)
             self.drop_session_info()
