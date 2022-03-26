@@ -27,7 +27,7 @@ It will create `venv` directory for Python virtual environment.
 3. Start `prepare_venv.bat` script.
 It will download and install into `venv` all required packages and libraries.
 
-    > Before continue you maybe need to fix some [security issues](#Security issues).
+    > Before continue you maybe need to fix some [security issues](#security-issues).
 
 4. Start `intialize_db.bat` script.
 It will initialize database due to `DATABASES` settings from `\src\sane_fin_site\sane_fin_site\settings.py` module.
