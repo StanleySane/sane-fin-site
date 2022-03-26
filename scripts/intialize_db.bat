@@ -13,6 +13,7 @@
 
 @echo.
 @echo Create admin user
+@rem WARNING!!! Change this default password via admin page as soon as possible
 @set DJANGO_SUPERUSER_PASSWORD=admin
 @python manage.py createsuperuser --noinput --username admin --email admin@example.com || goto :SomeError
 

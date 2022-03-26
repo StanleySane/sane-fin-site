@@ -6,6 +6,7 @@ from sane_finances.inspection import analyzers, serialize
 from sane_finances.sources.base import DownloadParameterValuesStorage
 
 from ..form_fields_managers import FormFieldsManager
+from .. import __version__
 
 T = typing.TypeVar('T')
 
@@ -13,7 +14,7 @@ T = typing.TypeVar('T')
 def all_pages_context():
     return {
         'site_title': 'Sane Finances Storage',
-        'site_header': 'Sane Finances Storage',
+        'site_header': 'Sane Finances Storage' + f" (v{__version__})",
         'site_url': '/',
         'has_permission': False,
         'is_popup': False,

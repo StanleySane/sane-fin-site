@@ -3,11 +3,6 @@
 @call activate_venv.bat
 
 
-@echo Collect static files
-
-@python ..\src\sane_fin_site\manage.py collectstatic --clear --noinput
-
-
 @echo Install PyInstaller
 
 @python -m pip install --upgrade pip
