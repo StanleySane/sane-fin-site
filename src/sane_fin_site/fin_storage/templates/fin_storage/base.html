@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | {{ site_title }}{% endblock %}
+
+{% block extrahead %}
+    <meta charset="utf-8">
+    {{ block.super }}
+
+    <script src="{% url 'fin_storage:jsi18n' %}"></script>
+    <script type="text/javascript" src="{% static '/admin/js/core.js' %}"></script>
+{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <link rel="stylesheet" type="text/css" href="{% static 'admin/css/changelists.css' %}">
+    <link rel="stylesheet" type="text/css" href="{% static 'admin/css/forms.css' %}">
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'fin_storage:exporters' %}">{{ site_header }}</a></h1>
+{% endblock %}
+
+{% block nav-global %}
+<div>
+    <a href="{% url 'admin:index' %}">Admin Page</a>
+</div>
+{% endblock %}
+
+{% block coltype %}{% endblock %}

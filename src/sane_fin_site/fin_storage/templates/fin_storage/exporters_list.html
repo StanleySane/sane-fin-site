@@ -1,0 +1,110 @@
+{% extends "fin_storage/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script type="text/javascript" src="{% static '/admin/js/actions.js' %}"></script>
+
+    {{ action_form.media }}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'fin_storage:exporters' %}">All Exporters</a>
+    {% if title %} &rsaquo; {{ title }}{% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+  <div id="content-main">
+    {% block object-tools %}
+        <ul class="object-tools">
+            <li><a href="{% url 'fin_storage:exporters_add' %}" class="addlink">Add exporter</a></li>
+            <li><a href="{% url 'fin_storage:sources_actuality' %}" class="viewsitelink">Sources actuality</a></li>
+            <li><a href="{% url 'fin_storage:import_settings' %}" class="viewsitelink">Import settings</a></li>
+        </ul>
+    {% endblock %}
+
+    <div class="module" id="changelist">
+      <div class="changelist-form-container">
+        <form id="changelist-form" method="post" novalidate>{% csrf_token %}
+
+        {% block result_list %}
+            <div class="actions">
+              {% block actions %}
+                {% block actions-form %}
+                {% for field in action_form %}{% if field.label %}<label>{{ field.label }} {% endif %}{{ field }}{% if field.label %}</label>{% endif %}{% endfor %}
+                {% endblock %}
+                {% block actions-submit %}
+                <button type="submit" class="button" title="Run the selected action" name="index" value="0">Go</button>
+                {% endblock %}
+                {% block actions-counter %}
+                <span class="action-counter" data-actions-icnt="{{ object_list|length }}">{{ selection_note }}</span>
+                {% endblock %}
+              {% endblock %}
+            </div>
+
+            <div class="results">
+                <table id="result_list">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="action-checkbox-column">
+                                <div class="text">
+                                    <span>
+                                        <input type="checkbox" id="action-toggle">
+                                    </span>
+                                </div>
+                                <div class="clear"></div>
+                            </th>
+                            <th scope="col"><div class="text"><span>Code</span></div></th>
+                            <th scope="col"><div class="text"><span>Description</span></div></th>
+                            <th scope="col"><div class="text"><span>Data quality</span></div></th>
+                            <th scope="col"><div class="text"><span>Type</span></div></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for exporter in object_list %}
+                        <tr>
+                            <td class="action-checkbox">
+                                <input type="checkbox" name="{{ action_checkbox_name }}" value="{{ exporter.id }}" class="action-select">
+                            </td>
+                            <th>
+                                <a href="{% url 'fin_storage:exporters_detail' exporter.id %}">{{ exporter.unique_code }}</a>
+                            </th>
+                            <td>{{ exporter.description }}</td>
+                            <td>
+                                {% if exporter.has_gaps or exporter.disabled or not exporter.is_actual or not exporter.is_active %}
+                                    {% if exporter.disabled %}
+                                    <ul class="errorlist">
+                                    <li>{{ exporter.error_message|truncatechars:50 }}</li>
+                                    </ul>
+                                    {% elif exporter.is_active %}
+                                        <ul class="errorlist">
+                                        {% if exporter.has_gaps %}
+                                        <li><a href="{% url 'fin_storage:exporters_detail' exporter.id %}">Fill the gaps</a></li>
+                                        {% endif %}
+                                        {% if not exporter.is_actual %}
+                                        <li><a href="{% url 'fin_storage:actualize_history' exporter.id %}">Actualize</a></li>
+                                        {% endif %}
+                                        </ul>
+                                    {% else %}
+                                    <span>Inactive</span>
+                                    {% endif %}
+                                {% else %}
+                                <span>Actual</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ exporter.exporter_type }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endblock %}
+
+        {% block pagination %}<p class="paginator">{{ object_list|length }} found</p>{% endblock %}
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}

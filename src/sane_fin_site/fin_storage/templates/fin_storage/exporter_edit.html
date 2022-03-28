@@ -1,0 +1,146 @@
+{% extends "fin_storage/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+    {{ block.super }}
+
+    {{ form.media }}
+{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <style>
+        input {margin: 0;}
+    </style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'fin_storage:exporters' %}">All Exporters</a>
+    {% if new_exporter %}
+    {# Create new exporter: #}
+    &rsaquo; <a href="{% url 'fin_storage:exporters_add' %}">{{ title }}</a>
+    &rsaquo; {{ object.exporter_registry.name|truncatewords:"18" }}
+    {% else %}
+    {# Edit existing exporter: #}
+    &rsaquo; <a href="{% url 'fin_storage:exporters_detail' object.id %}">{{ object.unique_code }}</a>
+    {% if title %} &rsaquo; {{ title }}{% endif %}
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} model-{{ form.model_name }} change-form{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <form method="post" id="{{ form.model_name }}_form" novalidate>
+        {% csrf_token %}
+
+        <div>
+        {% if form.errors %}
+            <p class="errornote">
+            {% if form.errors|length == 1 %}Please correct the error below.{% else %}Please correct the errors below.{% endif %}
+            </p>
+            {{ form.non_field_errors }}
+        {% endif %}
+
+        <fieldset class="module aligned ">
+            {{ form.as_div_common }}
+        </fieldset>
+
+        <fieldset class="module aligned ">
+            {% if find_instrument %}
+            <h2>Parameters to find instruments:</h2>
+            {% else %}
+            <h2>Exporter's parameters for download:</h2>
+            {% endif %}
+            {{ form.as_div_specific }}
+        </fieldset>
+
+        {% if find_instrument %}
+        <fieldset class="module aligned ">
+            <h2>Enter instrument info manually:</h2>
+            {{ form.as_div_manual }}
+        </fieldset>
+        {% endif %}
+
+        <div class="submit-row">
+            {% if find_instrument %}
+            <input type="submit" value="Continue with manual info" class="default" name="_with_manual">
+            <input type="submit" value="Find all" class="default" name="_find">
+            {% else %}
+            <input type="submit" value="Save" class="default" name="_save">
+            <input type="submit" value="Select another instrument" name="_select_another" style="float: left">
+
+            {% if can_cancel %}
+            <a href="{% url 'fin_storage:exporters_add_typed_cancel' type_id rand_id %}"
+               class="button default closelink"
+               style="float: left">Cancel</a>
+            {% endif %}
+
+            {% endif %}
+        </div>
+
+        {% if find_instrument %}
+        <fieldset class="module aligned ">
+            <h2>Or select one of available instruments (click 'Find All' before):</h2>
+            <div class="form-row field-instrument_info">
+                {% if form.instrument_info.errors %}{{ form.instrument_info.errors }}{% endif %}
+
+                <div class="module" id="changelist">
+                    <div class="changelist-form-container">
+                <div class="results">
+                    <table id="result_list">
+                        <thead>
+                            <tr>
+                                <th scope="col"><div class="text"><span>Code</span></div></th>
+                                <th scope="col"><div class="text"><span>Name</span></div></th>
+                                <th scope="col"><div class="text"><span>Provider specific name</span></div></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for instrument_info_provider in form.instrument_info %}
+                            <tr>
+                                <td>
+                                    <!--suppress XmlInvalidId -->
+                                    <label for="{{ instrument_info_provider.id_for_label }}"
+                                    style="padding: 0;">
+                                        {{ instrument_info_provider.tag }}
+                                        {{ instrument_info_provider.choice_label.instrument_info.code }}
+                                    </label>
+                                </td>
+                                <td style="vertical-align: middle;">{{ instrument_info_provider.choice_label.instrument_info.name }}</td>
+                                <td style="vertical-align: middle;">{{ instrument_info_provider.choice_label }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                        <p class="paginator">{{ form.instrument_info|length }} found</p>
+                        </div>
+                </div>
+            </div>
+        </fieldset>
+
+        <div class="submit-row">
+            <input type="submit" value="Continue with found" class="default" name="_with_found">
+            {% if can_cancel %}
+            <a href="{% url 'fin_storage:exporters_add_typed_cancel' type_id rand_id %}"
+               class="button default closelink"
+               style="float: left">Cancel</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% block admin_change_form_document_ready %}
+            <script id="django-admin-form-add-constants"
+                    src="{% static 'admin/js/change_form.js' %}"
+                    data-model-name="{{ form.model_name }}"
+                    async>
+            </script>
+        {% endblock %}
+
+        </div>
+    </form>
+</div>
+{% endblock %}

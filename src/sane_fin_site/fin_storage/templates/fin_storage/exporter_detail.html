@@ -1,0 +1,251 @@
+{% extends "fin_storage/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+    {{ block.super }}
+
+    <script type="text/javascript" src="{% static '/admin/js/collapse.js' %}"></script>
+    <script type="text/javascript" src="{% static '/admin/js/actions.js' %}"></script>
+
+    {{ exporter_form.media }}
+    {{ form.media }}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'fin_storage:exporters' %}">All Exporters</a>
+    &rsaquo; {{ object.unique_code }}
+    {% if title %} &rsaquo; {{ title }}{% endif %}
+</div>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} model-{{ form.model_name }} change-form{% endblock %}
+
+{% block content_subtitle %}
+    {{ block.super }}
+
+    {% if object.disabled %}
+    <h1 class="errornote">Exporter is not available</h1>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <form method="post" id="{{ exporter_form.model_name }}_form" novalidate>
+        <div>
+            <fieldset class="module aligned collapse">
+                <h2>Exporter &lsaquo;{{object.unique_code}}&rsaquo; &quot;{{object.description}}&quot;</h2>
+                {{ exporter_form.as_div_common }}
+            </fieldset>
+
+            {% if not object.disabled %}
+            <fieldset class="module aligned collapse">
+                <h2>Exporter's parameters</h2>
+                {{ exporter_form.as_div_specific }}
+            </fieldset>
+            {% endif %}
+
+            <div class="submit-row">
+                {% if not object.disabled %}
+                <a href="{% url 'fin_storage:exporters_edit_params' object.id %}" class="button default closelink">Edit</a>
+                {% endif %}
+                <p class="deletelink-box">
+                    <a href="{% url 'fin_storage:exporters_delete' object.id %}" class="deletelink">Delete</a>
+                </p>
+            </div>
+
+        </div>
+    </form>
+
+    {% if not object.disabled %}
+    <form method="post" id="{{ form.model_name }}_form" novalidate>
+        {% csrf_token %}
+        <div>
+            {% if form.errors %}
+                <p class="errornote">
+                {% if form.errors|length == 1 %}Please correct the error below.{% else %}Please correct the errors below.{% endif %}
+                </p>
+                {{ form.non_field_errors }}
+            {% endif %}
+
+            <fieldset class="module aligned ">
+                <h2>Select interval for download:</h2>
+                {{ form.as_div }}
+            </fieldset>
+
+            <div class="submit-row">
+                <input type="submit" value="Download" class="default" name="_download">
+            </div>
+
+            <script id="django-admin-form-add-constants"
+                    src="{% static 'admin/js/change_form.js' %}"
+                    data-model-name="{{ form.model_name }}"
+                    async>
+            </script>
+        </div>
+
+        {% if has_history_data or form.history.errors %}
+        <div>
+            <fieldset class="module aligned {% if pagination.show_all %} collapse {% endif %}">
+                <h2>Select downloaded history values to save into database</h2>
+                <div class="form-row field-history">
+                    {% if form.history.errors %}{{ form.history.errors }}{% endif %}
+
+                    <div class="module" id="changelist">
+                        <div class="changelist-form-container">
+                            <div class="results">
+                                <table id="result_list">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col"><div class="text"><span>Moment</span></div></th>
+                                            <th scope="col"><div class="text"><span>Value</span></div></th>
+                                            <th scope="col"><div class="text"><span>Comment</span></div></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for history_row in pagination.result_list %}
+                                        <tr>
+                                            <td>
+                                                <label for="{{ history_row.id_for_label }}">
+                                                    {% if history_row.choice_label.disabled %}
+                                                    <input type="checkbox"
+                                                           disabled
+                                                           id="{{ history_row.id_for_label }}"
+                                                           style="visibility: hidden;">
+                                                    {{ history_row.choice_label.moment }}
+                                                    {% else %}
+                                                    {{ history_row.tag }}
+                                                    {{ history_row.choice_label.moment }}
+                                                    {% endif %}
+                                                </label>
+                                            </td>
+                                            <td>{{ history_row.choice_label.value }}</td>
+                                            <td>{{ history_row.choice_label.comment }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <p class="paginator">
+                                {% if pagination.pagination_required %}
+                                {% for i in pagination.page_range %}
+                                    {% if i == pagination.page_num %}
+                                        <span class="this-page">{{ i }}</span>
+                                    {% elif i == pagination.paginator.ELLIPSIS %}
+                                        {{ i }}
+                                    {% elif i == pagination.paginator.num_pages %}
+                                        <a href="?{{ page_parameter_name }}={{ i }}" class="end">{{ i }}</a>
+                                    {% else %}
+                                        <a href="?{{ page_parameter_name }}={{ i }}">{{ i }}</a>
+                                    {% endif %}
+                                {% endfor %}
+                                {% endif %}
+
+                                {{ pagination.paginator.count }} found
+
+                                {% if pagination.pagination_required %}
+                                {% if pagination.need_show_all_link %}
+                                    <a href="?{{ all_parameter_name }}=" class="showall">Show all</a>
+                                {% endif %}
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            {% if not form.history.errors %}
+            <div class="submit-row">
+                <input type="submit" value="Save into database" class="default" name="_save">
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+    </form>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block footer %}
+{{ block.super }}
+
+<div>
+    <canvas id="myChart"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/moment"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment"></script>
+
+<script>
+
+const data = {
+  datasets: [
+  {% if chart_downloaded_data %}
+  {
+    label: 'Downloaded',
+    backgroundColor: 'blue',
+    borderColor: 'blue',
+    borderWidth: 1,
+    fill: false,
+    radius: 0,
+    data: {{ chart_downloaded_data }},
+  },
+  {% endif %}
+  {% if chart_stored_data %}
+  {
+    label: 'Stored',
+    backgroundColor: 'rgb(0, 255, 0, 0.2)',
+    borderColor: 'green',
+    borderWidth: 1,
+    fill: true,
+    radius: 0,
+    data: {{ chart_stored_data }},
+  },
+  {% endif %}
+  {% if chart_intervals_data %}
+  {
+    label: 'Stored intervals',
+    backgroundColor: 'rgb(0, 0, 255, 0.2)',
+    borderColor: 'rgb(0, 0, 255)',
+    borderWidth: 1,
+    fill: true,
+    radius: 0,
+    data: {{ chart_intervals_data }},
+  },
+  {% endif %}
+  ]
+};
+const config = {
+  type: 'line',
+  data: data,
+  options: {
+    animation: false,
+    interaction: {
+      intersect: false,
+      mode: 'nearest',
+    },
+    plugins: {
+    },
+    scales: {
+      x: {
+        type: 'time',
+        time: {
+          tooltipFormat: 'DD-MMM-YYYY HH:mm:ss'
+        },
+      },
+      y: {
+      }
+    },
+  },
+};
+    var myChart = new Chart(
+    document.getElementById('myChart'),
+    config
+    );
+
+</script>
+{% endblock %}
