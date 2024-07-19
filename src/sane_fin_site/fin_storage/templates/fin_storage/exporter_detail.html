@@ -26,6 +26,17 @@
 
     {% if object.disabled %}
     <h1 class="errornote">Exporter is not available</h1>
+
+    <div class="errornote">
+        <ul class="errorlist">
+            {% if object.error_message %}
+            <li>{{object.error_message}}</li>
+            {% endif %}
+            <li>Raw download info parameters: <code><strong>{{object.download_info_parameters_str}}</strong></code></li>
+            <li>Raw download history parameters: <code><strong>{{object.download_history_parameters_str}}</strong></code></li>
+        </ul>
+    </div>
+
     {% endif %}
 {% endblock %}
 

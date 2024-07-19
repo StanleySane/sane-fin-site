@@ -3,6 +3,7 @@ import logging
 import typing
 
 from django.db import transaction, models as django_models
+from sane_finances.communication.downloader import DownloadError
 from sane_finances.inspection import analyzers, serialize
 from sane_finances.sources.base import (
     InstrumentExporterRegistry, InstrumentValue, InstrumentExporterFactory, DownloadParameterValuesStorage)
@@ -127,18 +128,24 @@ class DatabaseContext:
         raw_exporter_type = exporter_model.exporter_type
         exporter_registry = self._get_exporter_registry(exporter_model.exporter_type, error_messages)
         if exporter_registry is not None and with_download_parameters:
-            download_param_values_storage = \
-                StaticDataCache().download_parameter_values_storage(exporter_registry.factory)
-            download_info_parameters = self._build_instance(
-                exporter_model.download_info_parameters,
-                exporter_registry.factory.download_parameters_factory.download_info_parameters_class,
-                download_param_values_storage,
-                exporter_registry.factory.download_parameters_factory.download_info_parameters_factory)
-            download_history_parameters = self._build_instance(
-                exporter_model.download_history_parameters,
-                exporter_registry.factory.download_parameters_factory.download_history_parameters_class,
-                download_param_values_storage,
-                exporter_registry.factory.download_parameters_factory.download_history_parameters_factory)
+            try:
+                download_param_values_storage = \
+                    StaticDataCache().download_parameter_values_storage(exporter_registry.factory)
+
+                download_info_parameters = self._build_instance(
+                    exporter_model.download_info_parameters,
+                    exporter_registry.factory.download_parameters_factory.download_info_parameters_class,
+                    download_param_values_storage,
+                    exporter_registry.factory.download_parameters_factory.download_info_parameters_factory)
+
+                download_history_parameters = self._build_instance(
+                    exporter_model.download_history_parameters,
+                    exporter_registry.factory.download_parameters_factory.download_history_parameters_class,
+                    download_param_values_storage,
+                    exporter_registry.factory.download_parameters_factory.download_history_parameters_factory)
+
+            except DownloadError as ex:
+                error_messages.append(f"Download parameters error: {ex}")
 
         if with_history_data:
             # noinspection PyUnresolvedReferences
